@@ -6,54 +6,102 @@ import Tooltip from '../common/Tooltip'
 import styles from './SettingsPanel.module.css'
 
 const TOOLTIPS = {
-  action:
-    'Move transfers folders and removes them from the source. Copy duplicates folders, leaving the source unchanged.',
-  imageType:
-    'BMP: collect .bmp images only. JPEG: collect .jpg/.jpeg only. Both: collect all image types from matched folders.',
-  duplicates:
-    'Skip: if an IMEI folder already exists at the destination, leave it untouched. Overwrite: replace existing destination folders with the new source data.',
-  scanIndex:
-    'All: include every scan. First scan only: only _1 entries (first time scanned that day).',
-  mrPass:
-    'Collects Model Recognition PASS images — devices the AI correctly identified. Searches ModelRecogImages/{date}/{Brand-Model}/ folders for .png files matching audit list IMEIs. Disables standard image collection.',
-  mrFail:
-    'Collects Model Recognition FAIL images — devices the AI misidentified (wrong placement, wrong color, wrong model). Searches ModelRecogImages/{date}/Error-Error/ for .png files matching audit list IMEIs.',
-  aiImages:
-    'When enabled, collects only the FD/ subfolder contents (AI detection images) from matched IMEI folders. Standard scan images at the folder root are excluded. When disabled, standard export includes FD/ as part of the full IMEI folder.'
+  action: {
+    en: 'Move transfers folders and removes them from the source. Copy duplicates folders, leaving the source unchanged.',
+    zh: '移动：将文件夹转移并从源位置删除。复制：复制文件夹，源位置保持不变。'
+  },
+  imageType: {
+    en: 'BMP: collect .bmp images only. JPEG: collect .jpg/.jpeg only. Both: collect all image types from matched folders.',
+    zh: 'BMP：仅收集 .bmp 图片。JPEG：仅收集 .jpg/.jpeg 图片。全部：收集匹配文件夹中的所有图片类型。'
+  },
+  duplicates: {
+    en: 'Skip: if an IMEI folder already exists at the destination, leave it untouched. Overwrite: replace existing destination folders with the new source data.',
+    zh: '跳过：如果目标位置已存在该 IMEI 文件夹，则保持不变。覆盖：用新的源数据替换目标位置中已有的文件夹。'
+  },
+  scanIndex: {
+    en: 'All: include every scan. First scan only: only _1 entries (first time scanned that day).',
+    zh: '全部：包含所有扫描记录。仅首次扫描：仅 _1 条目（当天首次扫描）。'
+  },
+  mrPass: {
+    en: 'Collects Model Recognition PASS images — devices the AI correctly identified. Searches ModelRecogImages/{date}/{Brand-Model}/ folders for .png files matching audit list IMEIs. Disables standard image collection.',
+    zh: '收集模型识别通过（PASS）图片 — AI 正确识别的设备。在 ModelRecogImages/{日期}/{品牌-型号}/ 文件夹中搜索与审计列表 IMEI 匹配的 .png 文件。启用后将禁用标准图片收集。'
+  },
+  mrFail: {
+    en: 'Collects Model Recognition FAIL images — devices the AI misidentified (wrong placement, wrong color, wrong model). Searches ModelRecogImages/{date}/Error-Error/ for .png files matching audit list IMEIs.',
+    zh: '收集模型识别失败（FAIL）图片 — AI 错误识别的设备（放置错误、颜色错误、型号错误）。在 ModelRecogImages/{日期}/Error-Error/ 中搜索与审计列表 IMEI 匹配的 .png 文件。'
+  },
+  aiImages: {
+    en: 'When enabled, collects only the FD/ subfolder contents (AI detection images) from matched IMEI folders. Standard scan images at the folder root are excluded. When disabled, standard export includes FD/ as part of the full IMEI folder.',
+    zh: '启用时，仅从匹配的 IMEI 文件夹中收集 FD/ 子文件夹内容（AI 检测图片）。文件夹根目录的标准扫描图片将被排除。禁用时，标准导出会将 FD/ 作为完整 IMEI 文件夹的一部分包含在内。'
+  }
 }
 
-const ORGANIZE_OPTIONS = [
-  {
-    value: 'flat',
-    label: 'Flat',
-    desc: 'All IMEI folders in a single destination folder. Example: dest/IMEI_index/'
-  },
-  {
-    value: 'by-machine',
-    label: 'By Machine',
-    desc: 'One level of grouping by source machine. Example: dest/M8/IMEI_index/'
-  },
-  {
-    value: 'by-date',
-    label: 'By Date',
-    desc: 'One level of grouping by scan date. Example: dest/20260515/IMEI_index/'
-  },
-  {
-    value: 'machine-date',
-    label: 'Machine → Date',
-    desc: 'Two-level nesting: machine folder then date. Example: dest/M8/20260515/IMEI_index/'
-  },
-  {
-    value: 'date-machine',
-    label: 'Date → Machine',
-    desc: 'Two-level nesting: date folder then machine. Example: dest/20260515/M8/IMEI_index/'
-  },
-  {
-    value: 'by-imei',
-    label: 'By IMEI',
-    desc: 'Groups all instances of the same device across machines/dates. Example: dest/350002267153742/M8_20260515_192/'
-  }
-]
+const ORGANIZE_OPTIONS = {
+  en: [
+    {
+      value: 'flat',
+      label: 'Flat',
+      desc: 'All IMEI folders in a single destination folder. Example: dest/IMEI_index/'
+    },
+    {
+      value: 'by-machine',
+      label: 'By Machine',
+      desc: 'One level of grouping by source machine. Example: dest/M8/IMEI_index/'
+    },
+    {
+      value: 'by-date',
+      label: 'By Date',
+      desc: 'One level of grouping by scan date. Example: dest/20260515/IMEI_index/'
+    },
+    {
+      value: 'machine-date',
+      label: 'Machine → Date',
+      desc: 'Two-level nesting: machine folder then date. Example: dest/M8/20260515/IMEI_index/'
+    },
+    {
+      value: 'date-machine',
+      label: 'Date → Machine',
+      desc: 'Two-level nesting: date folder then machine. Example: dest/20260515/M8/IMEI_index/'
+    },
+    {
+      value: 'by-imei',
+      label: 'By IMEI',
+      desc: 'Groups all instances of the same device across machines/dates. Example: dest/350002267153742/M8_20260515_192/'
+    }
+  ],
+  zh: [
+    {
+      value: 'flat',
+      label: '平铺',
+      desc: '所有 IMEI 文件夹放在同一个目标文件夹中。示例：dest/IMEI_index/'
+    },
+    {
+      value: 'by-machine',
+      label: '按机器',
+      desc: '按来源机器分组（一级）。示例：dest/M8/IMEI_index/'
+    },
+    {
+      value: 'by-date',
+      label: '按日期',
+      desc: '按扫描日期分组（一级）。示例：dest/20260515/IMEI_index/'
+    },
+    {
+      value: 'machine-date',
+      label: '机器 → 日期',
+      desc: '两级嵌套：先按机器文件夹，再按日期。示例：dest/M8/20260515/IMEI_index/'
+    },
+    {
+      value: 'date-machine',
+      label: '日期 → 机器',
+      desc: '两级嵌套：先按日期文件夹，再按机器。示例：dest/20260515/M8/IMEI_index/'
+    },
+    {
+      value: 'by-imei',
+      label: '按 IMEI',
+      desc: '将同一设备在不同机器/日期的所有记录分组。示例：dest/350002267153742/M8_20260515_192/'
+    }
+  ]
+}
 
 interface SettingsPanelProps {
   lang: 'en' | 'zh'
@@ -87,7 +135,8 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
     if (path) setDestination(path)
   }
 
-  const selectedOrgLabel = ORGANIZE_OPTIONS.find((o) => o.value === organize)?.label ?? 'Flat'
+  const orgOptions = ORGANIZE_OPTIONS[lang]
+  const selectedOrgLabel = orgOptions.find((o) => o.value === organize)?.label ?? (lang === 'en' ? 'Flat' : '平铺')
 
   return (
     <GlassCard title={lang === 'en' ? 'Settings' : '设置'} delay={0.1} elevated={orgOpen}>
@@ -102,7 +151,7 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
               { value: 'move', label: lang === 'en' ? 'Move' : '移动' }
             ]}
           />
-          <Tooltip text={TOOLTIPS.action} />
+          <Tooltip text={TOOLTIPS.action[lang]} />
         </div>
         <div className={styles.row}>
           <Select
@@ -115,7 +164,7 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
               { value: 'jpeg', label: 'JPEG' }
             ]}
           />
-          <Tooltip text={TOOLTIPS.imageType} />
+          <Tooltip text={TOOLTIPS.imageType[lang]} />
         </div>
 
         <div className={styles.row}>
@@ -130,7 +179,7 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
             </button>
             {orgOpen && (
               <div className={styles.orgDropdown}>
-                {ORGANIZE_OPTIONS.map((opt) => (
+                {orgOptions.map((opt) => (
                   <div
                     key={opt.value}
                     className={`${styles.orgOption} ${organize === opt.value ? styles.orgOptionActive : ''}`}
@@ -158,7 +207,7 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
               { value: 'overwrite', label: lang === 'en' ? 'Overwrite' : '覆盖' }
             ]}
           />
-          <Tooltip text={TOOLTIPS.duplicates} />
+          <Tooltip text={TOOLTIPS.duplicates[lang]} />
         </div>
         <div className={styles.row}>
           <Select
@@ -170,18 +219,18 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
               { value: 'first_only', label: lang === 'en' ? 'First scan only' : '仅首次扫描' }
             ]}
           />
-          <Tooltip text={TOOLTIPS.scanIndex} />
+          <Tooltip text={TOOLTIPS.scanIndex[lang]} />
         </div>
       </div>
 
       <div className={styles.toggleRow}>
         <div className={styles.row}>
-          <Toggle label="MR PASS" checked={mrPass} onChange={setMrPass} />
-          <Tooltip text={TOOLTIPS.mrPass} />
+          <Toggle label={lang === 'en' ? 'MR PASS' : 'MR 通过'} checked={mrPass} onChange={setMrPass} />
+          <Tooltip text={TOOLTIPS.mrPass[lang]} />
         </div>
         <div className={styles.row}>
-          <Toggle label="MR FAIL" checked={mrFail} onChange={setMrFail} />
-          <Tooltip text={TOOLTIPS.mrFail} />
+          <Toggle label={lang === 'en' ? 'MR FAIL' : 'MR 失败'} checked={mrFail} onChange={setMrFail} />
+          <Tooltip text={TOOLTIPS.mrFail[lang]} />
         </div>
         <div className={styles.row}>
           <Toggle
@@ -189,7 +238,7 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
             checked={aiImages}
             onChange={setAiImages}
           />
-          <Tooltip text={TOOLTIPS.aiImages} />
+          <Tooltip text={TOOLTIPS.aiImages[lang]} />
         </div>
       </div>
 
