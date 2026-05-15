@@ -11,5 +11,9 @@ export interface FolderScanResult {
 export interface ElectronAPI {
   scanRoot: (rootPath: string) => Promise<FolderScanResult>
   openFolderDialog: () => Promise<string | null>
+  openFileDialog: () => Promise<string | null>
   ping: () => Promise<string>
+  windowMinimize: () => void
+  windowMaximize: () => void
+  windowClose: () => void
 }

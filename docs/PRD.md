@@ -82,8 +82,8 @@ The tool accepts audit files containing 15-digit IMEI device numbers.
 
 | Filter | Options | Description |
 |--------|---------|-------------|
-| Date Range | Start date / End date (optional) | Only search date folders within the specified range |
-| Scan Index | All, First scan only (_1), Rescans only (_2+) | Filter by device scan sequence number |
+| Date Range | Start date+time / End date+time (optional) | Only search date folders within the specified range; optional time component filters by image timestamps within folders |
+| Scan Index | All, First scan only (_1) | Filter by device scan sequence number. Note: "Rescans only" (_2+) is deferred pending implementation specification |
 
 ### 2.4 Results Preview
 

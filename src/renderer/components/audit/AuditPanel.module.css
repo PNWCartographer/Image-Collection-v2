@@ -1,0 +1,89 @@
+.dropzone {
+  border: 2px dashed var(--border-dropzone);
+  border-radius: var(--radius-md);
+  background: var(--bg-dropzone);
+  padding: 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.dropzoneActive {
+  border-color: var(--accent-primary);
+  background: var(--bg-dropzone-hover);
+}
+
+.dropIcon {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.dropText {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.dropHint {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+}
+
+.fileName {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.browseBtn {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 6px 14px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.browseBtn:hover {
+  background: var(--bg-glass-hover);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.summaryText {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
