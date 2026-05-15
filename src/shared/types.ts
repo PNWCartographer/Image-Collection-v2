@@ -87,6 +87,7 @@ export interface ElectronAPI {
   searchIMEIs: (request: SearchRequest) => Promise<SearchResult>
   cancelSearch: () => void
   onSearchProgress: (callback: (progress: SearchProgress) => void) => () => void
+  onSearchMatches: (callback: (matches: SearchMatch[]) => void) => () => void
   ping: () => Promise<string>
   settingsGet: (key: string) => Promise<unknown>
   settingsSet: (key: string, value: unknown) => Promise<void>

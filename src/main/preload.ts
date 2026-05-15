@@ -15,6 +15,13 @@ const api: ElectronAPI = {
     ipcRenderer.on('search:progress', handler)
     return () => ipcRenderer.removeListener('search:progress', handler)
   },
+  onSearchMatches: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, matches: unknown): void => {
+      callback(matches as Parameters<typeof callback>[0])
+    }
+    ipcRenderer.on('search:matches', handler)
+    return () => ipcRenderer.removeListener('search:matches', handler)
+  },
   ping: () => ipcRenderer.invoke('ping'),
   settingsGet: (key) => ipcRenderer.invoke('settings:get', key),
   settingsSet: (key, value) => ipcRenderer.invoke('settings:set', key, value),

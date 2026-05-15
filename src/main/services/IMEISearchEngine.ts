@@ -1,4 +1,4 @@
-import { readdir, stat } from 'fs/promises'
+import { readdir } from 'fs/promises'
 import { join } from 'path'
 import type { SearchRequest, SearchMatch, SearchProgress, SearchResult } from '../../shared/types'
 
@@ -7,15 +7,42 @@ const SKIP_FOLDERS = new Set([
   '#recycle', '$recycle.bin', 'bin', 'modelrecogimages', 'version_control'
 ])
 
+// Concurrent NAS reads — keeps the SMB pipe saturated
+const CONCURRENCY = 32
+
 let cancelled = false
 
 export function cancelSearch(): void {
   cancelled = true
 }
 
+async function pooled<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let nextIndex = 0
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length && !cancelled) {
+      const idx = nextIndex++
+      results[idx] = await fn(items[idx])
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker()
+  )
+  await Promise.all(workers)
+  return results
+}
+
 export async function searchIMEIs(
   request: SearchRequest,
-  onProgress: (progress: SearchProgress) => void
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void
 ): Promise<SearchResult> {
   cancelled = false
   const startTime = Date.now()
@@ -24,11 +51,12 @@ export async function searchIMEIs(
   const matches: SearchMatch[] = []
   const foundIMEIs = new Set<string>()
 
-  // Phase 1: count total date folders for progress tracking
-  const machineDateFolders: { machine: string; datePath: string; dateStr: string }[] = []
+  // Phase 1: Discover date folders (parallel across machines)
+  type DateFolder = { machine: string; datePath: string; dateStr: string }
+  const dateFolders: DateFolder[] = []
 
-  for (const folderName of request.selectedFolders) {
-    if (cancelled) break
+  await pooled(request.selectedFolders, CONCURRENCY, async (folderName) => {
+    if (cancelled) return
     const machinePath = join(request.rootPath, folderName)
 
     try {
@@ -38,28 +66,29 @@ export async function searchIMEIs(
         if (!entry.isDirectory()) continue
         if (!DATE_REGEX.test(entry.name)) continue
         if (SKIP_FOLDERS.has(entry.name.toLowerCase())) continue
-
-        // Apply date range filter
         if (!isDateInRange(entry.name, request)) continue
 
-        machineDateFolders.push({
+        dateFolders.push({
           machine: folderName,
           datePath: join(machinePath, entry.name),
           dateStr: entry.name
         })
       }
     } catch {
-      // Machine folder might not be accessible, skip it
+      // Machine folder not accessible
     }
-  }
+  })
 
-  const totalFolders = machineDateFolders.length
+  if (cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, onProgress)
+
+  const totalFolders = dateFolders.length
   let foldersScanned = 0
+  let lastProgressTime = 0
 
-  // Phase 2: scan each date folder for IMEI matches
-  for (const { machine, datePath, dateStr } of machineDateFolders) {
-    if (cancelled) break
-
+  const sendProgress = (machine: string, dateStr: string): void => {
+    const now = Date.now()
+    if (now - lastProgressTime < 150) return
+    lastProgressTime = now
     onProgress({
       phase: 'scanning',
       percent: totalFolders > 0 ? (foldersScanned / totalFolders) * 100 : 0,
@@ -67,11 +96,33 @@ export async function searchIMEIs(
       currentDate: dateStr,
       matchesSoFar: matches.length,
       foldersScanned,
-      totalFolders
+      totalFolders,
     })
+  }
+
+  // Send initial progress
+  if (dateFolders.length > 0) {
+    onProgress({
+      phase: 'scanning',
+      percent: 0,
+      currentMachine: dateFolders[0].machine,
+      currentDate: dateFolders[0].dateStr,
+      matchesSoFar: 0,
+      foldersScanned: 0,
+      totalFolders,
+    })
+  }
+
+  // Phase 2: Scan date folders for IMEI matches (parallel pool)
+  await pooled(dateFolders, CONCURRENCY, async ({ machine, datePath, dateStr }) => {
+    if (cancelled) return
+
+    sendProgress(machine, dateStr)
 
     try {
       const imeiEntries = await readdir(datePath, { withFileTypes: true })
+
+      const pendingMatches: { imei: string; scanIndex: number; folderName: string; folderPath: string }[] = []
 
       for (const imeiEntry of imeiEntries) {
         if (cancelled) break
@@ -80,45 +131,70 @@ export async function searchIMEIs(
         const parsed = parseIMEIFolder(imeiEntry.name)
         if (!parsed) continue
 
-        // Apply scan index filter
         if (request.scanIndexFilter === 'first_only' && parsed.scanIndex !== 1) continue
 
         if (imeiSet.has(parsed.imei)) {
-          const folderPath = join(datePath, imeiEntry.name)
-          const fileCounts = await countFiles(folderPath)
-
-          matches.push({
+          pendingMatches.push({
             imei: parsed.imei,
-            machineName: machine,
-            date: dateStr,
             scanIndex: parsed.scanIndex,
             folderName: imeiEntry.name,
-            sourcePath: folderPath,
-            bmpCount: fileCounts.bmp,
-            jpegCount: fileCounts.jpeg,
-            otherCount: fileCounts.other,
-            totalFiles: fileCounts.bmp + fileCounts.jpeg + fileCounts.other
+            folderPath: join(datePath, imeiEntry.name)
           })
-          foundIMEIs.add(parsed.imei)
+        }
+      }
+
+      // Count files in matched folders in parallel
+      if (pendingMatches.length > 0 && !cancelled) {
+        const fileCounts = await Promise.all(
+          pendingMatches.map((m) => countFiles(m.folderPath))
+        )
+
+        const batch: SearchMatch[] = []
+        for (let i = 0; i < pendingMatches.length; i++) {
+          const m = pendingMatches[i]
+          const fc = fileCounts[i]
+          const match: SearchMatch = {
+            imei: m.imei,
+            machineName: machine,
+            date: dateStr,
+            scanIndex: m.scanIndex,
+            folderName: m.folderName,
+            sourcePath: m.folderPath,
+            bmpCount: fc.bmp,
+            jpegCount: fc.jpeg,
+            otherCount: fc.other,
+            totalFiles: fc.bmp + fc.jpeg + fc.other
+          }
+          matches.push(match)
+          batch.push(match)
+          foundIMEIs.add(m.imei)
+        }
+
+        // Stream batch to UI
+        if (batch.length > 0) {
+          onMatches(batch)
         }
       }
     } catch {
-      // Date folder might not be accessible, skip
+      // Date folder not accessible
     }
 
     foldersScanned++
-  }
+  })
 
-  const missingIMEIs = request.imeis.filter((imei) => !foundIMEIs.has(imei))
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, onProgress)
+}
+
+function buildResult(
+  matches: SearchMatch[],
+  allImeis: string[],
+  foundIMEIs: Set<string>,
+  startTime: number,
+  foldersScanned: number,
+  onProgress: (progress: SearchProgress) => void
+): SearchResult {
+  const missingIMEIs = allImeis.filter((imei) => !foundIMEIs.has(imei))
   const elapsedMs = Date.now() - startTime
-
-  const result: SearchResult = {
-    matches,
-    missingIMEIs,
-    totalSearched: totalFolders,
-    elapsedMs,
-    folderCount: foldersScanned
-  }
 
   onProgress({
     phase: cancelled ? 'cancelled' : 'complete',
@@ -127,10 +203,17 @@ export async function searchIMEIs(
     currentDate: '',
     matchesSoFar: matches.length,
     foldersScanned,
-    totalFolders
+    totalFolders: foldersScanned,
+    cached: false
   })
 
-  return result
+  return {
+    matches,
+    missingIMEIs,
+    totalSearched: foldersScanned,
+    elapsedMs,
+    folderCount: foldersScanned
+  }
 }
 
 function parseIMEIFolder(name: string): { imei: string; scanIndex: number } | null {
@@ -140,7 +223,6 @@ function parseIMEIFolder(name: string): { imei: string; scanIndex: number } | nu
   const imeiPart = name.substring(0, underscoreIdx)
   const indexPart = name.substring(underscoreIdx + 1)
 
-  // IMEI must be exactly 15 digits
   if (!/^\d{15}$/.test(imeiPart)) return null
 
   const scanIndex = parseInt(indexPart, 10)
@@ -150,24 +232,12 @@ function parseIMEIFolder(name: string): { imei: string; scanIndex: number } | nu
 }
 
 function isDateInRange(dateStr: string, request: SearchRequest): boolean {
-  // No date filter set — include all
   if (!request.dateStart && !request.dateEnd) return true
 
-  // Parse YYYYMMDD to comparable format YYYY-MM-DD
   const folderDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`
 
-  if (request.dateStart) {
-    let startCompare = request.dateStart
-    // If time is set, we still compare at the date level for folder filtering.
-    // Time filtering would apply to file modified times, but folder names
-    // only encode date, so we compare dates only.
-    if (folderDate < startCompare) return false
-  }
-
-  if (request.dateEnd) {
-    let endCompare = request.dateEnd
-    if (folderDate > endCompare) return false
-  }
+  if (request.dateStart && folderDate < request.dateStart) return false
+  if (request.dateEnd && folderDate > request.dateEnd) return false
 
   return true
 }

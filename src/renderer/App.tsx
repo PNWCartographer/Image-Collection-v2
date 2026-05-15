@@ -9,7 +9,7 @@ import type { SettingsState } from './components/settings/SettingsPanel'
 import ResultsPanel from './components/results/ResultsPanel'
 import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
-import type { AuditParseResult, SearchProgress, SearchResult } from '../shared/types'
+import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch } from '../shared/types'
 import styles from './App.module.css'
 
 function App(): JSX.Element {
@@ -19,6 +19,7 @@ function App(): JSX.Element {
   const [rootPath, setRootPath] = useState('')
   const [auditResult, setAuditResult] = useState<AuditParseResult | null>(null)
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  const [streamingMatches, setStreamingMatches] = useState<SearchMatch[]>([])
   const [searching, setSearching] = useState(false)
   const [progress, setProgress] = useState<SearchProgress | null>(null)
 
@@ -48,10 +49,18 @@ function App(): JSX.Element {
     })
   }, [])
 
-  // Subscribe to search progress events from main process
+  // Subscribe to search progress events
   useEffect(() => {
     const unsubscribe = window.electronAPI.onSearchProgress((prog) => {
       setProgress(prog)
+    })
+    return unsubscribe
+  }, [])
+
+  // Subscribe to streaming match events
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onSearchMatches((matches) => {
+      setStreamingMatches((prev) => [...prev, ...matches])
     })
     return unsubscribe
   }, [])
@@ -90,6 +99,7 @@ function App(): JSX.Element {
 
     setSearching(true)
     setSearchResult(null)
+    setStreamingMatches([])
     setProgress(null)
 
     const dr = dateRangeRef.current
@@ -107,6 +117,7 @@ function App(): JSX.Element {
         scanIndexFilter: settings.scanIndex as 'all' | 'first_only'
       })
       setSearchResult(result)
+      setStreamingMatches([]) // Clear streaming state — final result replaces it
     } catch (err) {
       console.error('Search failed:', err)
     } finally {
@@ -121,10 +132,24 @@ function App(): JSX.Element {
   const handleClear = (): void => {
     setAuditResult(null)
     setSearchResult(null)
+    setStreamingMatches([])
     setProgress(null)
   }
 
   const canSearch = selectedFolders.length > 0 && (auditResult?.validIMEIs.length ?? 0) > 0 && !searching
+
+  // Use streaming matches while searching, final result after complete
+  const displayResult: SearchResult | null = searchResult
+    ? searchResult
+    : streamingMatches.length > 0
+      ? {
+          matches: streamingMatches,
+          missingIMEIs: [],
+          totalSearched: 0,
+          elapsedMs: 0,
+          folderCount: 0
+        }
+      : null
 
   const formatElapsed = (ms: number): string => {
     const seconds = Math.floor(ms / 1000)
@@ -179,7 +204,7 @@ function App(): JSX.Element {
           />
           <AuditPanel lang={lang} onAuditLoaded={handleAuditLoaded} />
           <SettingsPanel lang={lang} onSettingsChange={handleSettingsChange} />
-          <ResultsPanel lang={lang} result={searchResult} />
+          <ResultsPanel lang={lang} result={displayResult} searching={searching} />
           <ProgressBar
             percent={progressPercent}
             label={progressLabel}

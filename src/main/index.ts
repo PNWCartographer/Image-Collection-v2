@@ -74,9 +74,15 @@ function registerIPC(): void {
   })
 
   ipcMain.handle('search:start', async (_event, request: SearchRequest) => {
-    return searchIMEIs(request, (progress) => {
-      mainWindow?.webContents.send('search:progress', progress)
-    })
+    return searchIMEIs(
+      request,
+      (progress) => {
+        mainWindow?.webContents.send('search:progress', progress)
+      },
+      (matches) => {
+        mainWindow?.webContents.send('search:matches', matches)
+      }
+    )
   })
 
   ipcMain.on('search:cancel', () => {

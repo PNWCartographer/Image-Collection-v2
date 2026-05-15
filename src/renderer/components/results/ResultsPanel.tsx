@@ -8,9 +8,10 @@ type SortKey = 'imei' | 'machineName' | 'date' | 'scanIndex' | 'totalFiles'
 interface ResultsPanelProps {
   lang: 'en' | 'zh'
   result: SearchResult | null
+  searching?: boolean
 }
 
-export default function ResultsPanel({ lang, result }: ResultsPanelProps): JSX.Element {
+export default function ResultsPanel({ lang, result, searching }: ResultsPanelProps): JSX.Element {
   const [sortKey, setSortKey] = useState<SortKey>('imei')
   const [sortAsc, setSortAsc] = useState(true)
   const [showMissing, setShowMissing] = useState(false)
@@ -76,10 +77,13 @@ export default function ResultsPanel({ lang, result }: ResultsPanelProps): JSX.E
         <span className={styles.summaryMain}>
           {!result
             ? (lang === 'en' ? 'No search results yet' : '暂无搜索结果')
-            : (lang === 'en'
-                ? `Found: ${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} IMEIs (${result.matches.length.toLocaleString()} total matches) · ${formatElapsed(result.elapsedMs)}`
-                : `已找到：${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} 个IMEI（共 ${result.matches.length.toLocaleString()} 个匹配）· ${formatElapsed(result.elapsedMs)}`
-              )
+            : searching
+              ? (lang === 'en'
+                  ? `Searching... ${result.matches.length.toLocaleString()} matches found so far`
+                  : `搜索中... 已找到 ${result.matches.length.toLocaleString()} 个匹配`)
+              : (lang === 'en'
+                  ? `Found: ${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} IMEIs (${result.matches.length.toLocaleString()} total matches) · ${formatElapsed(result.elapsedMs)}`
+                  : `已找到：${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} 个IMEI（共 ${result.matches.length.toLocaleString()} 个匹配）· ${formatElapsed(result.elapsedMs)}`)
           }
         </span>
         <div className={styles.summaryDots}>
