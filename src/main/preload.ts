@@ -6,6 +6,15 @@ const api: ElectronAPI = {
   openFolderDialog: () => ipcRenderer.invoke('dialog:open-folder'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   parseAuditFile: (filePath) => ipcRenderer.invoke('audit:parse', filePath),
+  searchIMEIs: (request) => ipcRenderer.invoke('search:start', request),
+  cancelSearch: () => ipcRenderer.send('search:cancel'),
+  onSearchProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: unknown): void => {
+      callback(progress as Parameters<typeof callback>[0])
+    }
+    ipcRenderer.on('search:progress', handler)
+    return () => ipcRenderer.removeListener('search:progress', handler)
+  },
   ping: () => ipcRenderer.invoke('ping'),
   settingsGet: (key) => ipcRenderer.invoke('settings:get', key),
   settingsSet: (key, value) => ipcRenderer.invoke('settings:set', key, value),

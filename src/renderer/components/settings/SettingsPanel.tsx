@@ -103,11 +103,24 @@ const ORGANIZE_OPTIONS = {
   ]
 }
 
-interface SettingsPanelProps {
-  lang: 'en' | 'zh'
+export interface SettingsState {
+  action: string
+  imageType: string
+  organize: string
+  duplicates: string
+  scanIndex: string
+  mrPass: boolean
+  mrFail: boolean
+  aiImages: boolean
+  destination: string
 }
 
-export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element {
+interface SettingsPanelProps {
+  lang: 'en' | 'zh'
+  onSettingsChange?: (settings: SettingsState) => void
+}
+
+export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelProps): JSX.Element {
   const [action, setAction] = useState('copy')
   const [imageType, setImageType] = useState('both')
   const [organize, setOrganize] = useState('flat')
@@ -119,6 +132,10 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
   const [aiImages, setAiImages] = useState(false)
   const [destination, setDestination] = useState('')
   const orgRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    onSettingsChange?.({ action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination })
+  }, [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent): void => {

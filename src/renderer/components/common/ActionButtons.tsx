@@ -4,8 +4,10 @@ interface ActionButtonsProps {
   onSearch: () => void
   onExport: () => void
   onClear: () => void
+  onCancel?: () => void
   canSearch: boolean
   canExport: boolean
+  searching: boolean
   lang: 'en' | 'zh'
 }
 
@@ -13,19 +15,30 @@ export default function ActionButtons({
   onSearch,
   onExport,
   onClear,
+  onCancel,
   canSearch,
   canExport,
+  searching,
   lang
 }: ActionButtonsProps): JSX.Element {
   return (
     <div className={styles.container}>
-      <button
-        className={styles.primary}
-        onClick={onSearch}
-        disabled={!canSearch}
-      >
-        {lang === 'en' ? 'Start Search' : '开始搜索'}
-      </button>
+      {searching ? (
+        <button
+          className={styles.cancel}
+          onClick={onCancel}
+        >
+          {lang === 'en' ? 'Cancel Search' : '取消搜索'}
+        </button>
+      ) : (
+        <button
+          className={styles.primary}
+          onClick={onSearch}
+          disabled={!canSearch}
+        >
+          {lang === 'en' ? 'Start Search' : '开始搜索'}
+        </button>
+      )}
       <button
         className={styles.primary}
         onClick={onExport}

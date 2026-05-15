@@ -52,3 +52,21 @@
   background: var(--bg-glass-hover);
   transform: translateY(-1px);
 }
+
+.cancel {
+  background: var(--status-red);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-xl);
+  padding: 10px 28px;
+  font-family: var(--font-family);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.cancel:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}

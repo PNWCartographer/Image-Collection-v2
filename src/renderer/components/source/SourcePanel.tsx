@@ -16,13 +16,21 @@ const FOLDER_ZH: Record<string, string> = {
   Bin: '回收站',
 }
 
+export interface DateTimeRange {
+  dateStart: string
+  dateEnd: string
+  timeStart: string
+  timeEnd: string
+}
+
 interface SourcePanelProps {
   lang: 'en' | 'zh'
   onToggleLang: () => void
   onFoldersChange: (selected: string[], rootPath: string) => void
+  onDateRangeChange?: (range: DateTimeRange) => void
 }
 
-export default function SourcePanel({ lang, onToggleLang, onFoldersChange }: SourcePanelProps): JSX.Element {
+export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDateRangeChange }: SourcePanelProps): JSX.Element {
   const [folderPath, setFolderPath] = useState('')
   const [folders, setFolders] = useState<FolderInfo[]>([])
   const [toggles, setToggles] = useState<Record<string, boolean>>({})
@@ -49,6 +57,12 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange }: Sou
       .map(([k]) => k)
     onFoldersChange(selected, folderPath)
   }, [toggles, folderPath])
+
+  useEffect(() => {
+    const timeStart = hourStart && minStart ? `${hourStart}:${minStart}` : ''
+    const timeEnd = hourEnd && minEnd ? `${hourEnd}:${minEnd}` : ''
+    onDateRangeChange?.({ dateStart, dateEnd, timeStart, timeEnd })
+  }, [dateStart, dateEnd, hourStart, minStart, hourEnd, minEnd])
 
   const scanFolder = useCallback(async (path: string) => {
     if (!path) return

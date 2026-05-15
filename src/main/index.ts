@@ -2,7 +2,9 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { scanRootFolder } from './services/FolderScanner'
 import { parseAuditFile } from './services/AuditParser'
+import { searchIMEIs, cancelSearch } from './services/IMEISearchEngine'
 import { getSetting, setSetting } from './services/SettingsStore'
+import type { SearchRequest } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -69,6 +71,16 @@ function registerIPC(): void {
 
   ipcMain.handle('audit:parse', async (_event, filePath: string) => {
     return parseAuditFile(filePath)
+  })
+
+  ipcMain.handle('search:start', async (_event, request: SearchRequest) => {
+    return searchIMEIs(request, (progress) => {
+      mainWindow?.webContents.send('search:progress', progress)
+    })
+  })
+
+  ipcMain.on('search:cancel', () => {
+    cancelSearch()
   })
 
   ipcMain.handle('settings:get', (_event, key: string) => {

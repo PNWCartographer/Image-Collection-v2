@@ -24,6 +24,48 @@ export interface AuditParseResult {
   duplicateCount: number
 }
 
+export interface SearchRequest {
+  rootPath: string
+  selectedFolders: string[]
+  imeis: string[]
+  dateStart?: string
+  dateEnd?: string
+  timeStart?: string
+  timeEnd?: string
+  scanIndexFilter: 'all' | 'first_only'
+}
+
+export interface SearchMatch {
+  imei: string
+  machineName: string
+  date: string
+  scanIndex: number
+  folderName: string
+  sourcePath: string
+  bmpCount: number
+  jpegCount: number
+  otherCount: number
+  totalFiles: number
+}
+
+export interface SearchProgress {
+  phase: 'scanning' | 'complete' | 'cancelled'
+  percent: number
+  currentMachine: string
+  currentDate: string
+  matchesSoFar: number
+  foldersScanned: number
+  totalFolders: number
+}
+
+export interface SearchResult {
+  matches: SearchMatch[]
+  missingIMEIs: string[]
+  totalSearched: number
+  elapsedMs: number
+  folderCount: number
+}
+
 export interface AppSettings {
   sources: {
     id: string
@@ -42,6 +84,9 @@ export interface ElectronAPI {
   openFolderDialog: () => Promise<string | null>
   openFileDialog: () => Promise<string | null>
   parseAuditFile: (filePath: string) => Promise<AuditParseResult>
+  searchIMEIs: (request: SearchRequest) => Promise<SearchResult>
+  cancelSearch: () => void
+  onSearchProgress: (callback: (progress: SearchProgress) => void) => () => void
   ping: () => Promise<string>
   settingsGet: (key: string) => Promise<unknown>
   settingsSet: (key: string, value: unknown) => Promise<void>
