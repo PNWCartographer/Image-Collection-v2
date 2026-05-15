@@ -139,6 +139,8 @@ function App(): JSX.Element {
     statusMsg = lang === 'en'
       ? `Searching ${progress.currentMachine}/${progress.currentDate} · ${progress.matchesSoFar} matches`
       : `正在搜索 ${progress.currentMachine}/${progress.currentDate} · ${progress.matchesSoFar} 个匹配`
+  } else if (searching) {
+    statusMsg = lang === 'en' ? 'Preparing search...' : '正在准备搜索...'
   } else if (searchResult) {
     const unique = new Set(searchResult.matches.map((m) => m.imei)).size
     statusMsg = lang === 'en'
@@ -150,7 +152,7 @@ function App(): JSX.Element {
     statusMsg = lang === 'en' ? 'Ready' : '就绪'
   }
 
-  const progressVisible = searching && progress !== null
+  const progressVisible = searching
   const progressPercent = progress?.percent ?? 0
   const progressLabel = progress
     ? (lang === 'en'

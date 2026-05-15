@@ -16,8 +16,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Image Collection v2
-  installDir: "C:\\Program Files\\Image Collection v2"
+  perMachine: true
   deleteAppDataOnUninstall: true
 files:
   - out/**/*
-  - "!node_modules"

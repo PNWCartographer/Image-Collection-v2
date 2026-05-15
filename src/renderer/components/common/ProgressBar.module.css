@@ -23,6 +23,20 @@
   transition: width 300ms linear;
 }
 
+.fillIndeterminate {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 3px;
+  width: 30%;
+  animation: indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% { margin-left: 0%; opacity: 0.6; }
+  50% { margin-left: 70%; opacity: 1; }
+  100% { margin-left: 0%; opacity: 0.6; }
+}
+
 .info {
   display: flex;
   justify-content: space-between;
