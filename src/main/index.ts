@@ -1,13 +1,21 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
-import { readdir, stat } from 'fs/promises'
+import { scanRootFolder } from './services/FolderScanner'
+import { parseAuditFile } from './services/AuditParser'
+import { getSetting, setSetting } from './services/SettingsStore'
 
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
+  const saved = getSetting('windowBounds') as
+    | { x: number; y: number; width: number; height: number }
+    | undefined
+
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 800,
+    width: saved?.width ?? 1100,
+    height: saved?.height ?? 800,
+    x: saved?.x,
+    y: saved?.y,
     minWidth: 900,
     minHeight: 600,
     frame: false,
@@ -15,6 +23,13 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false
+    }
+  })
+
+  mainWindow.on('close', () => {
+    if (mainWindow) {
+      const bounds = mainWindow.getBounds()
+      setSetting('windowBounds', bounds)
     }
   })
 
@@ -36,20 +51,6 @@ function registerIPC(): void {
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle('scanner:scan-root', async (_event, rootPath: string) => {
-    const entries = await readdir(rootPath, { withFileTypes: true })
-    const folders = entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => ({
-        name: entry.name,
-        path: join(rootPath, entry.name),
-        isDateFolder: /^\d{8}$/.test(entry.name),
-        isMachineFolder: /^M\d+$/i.test(entry.name)
-      }))
-
-    return { rootPath, folders }
-  })
-
   ipcMain.handle('dialog:open-file', async () => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -60,6 +61,22 @@ function registerIPC(): void {
       ]
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('scanner:scan-root', async (_event, rootPath: string) => {
+    return scanRootFolder(rootPath)
+  })
+
+  ipcMain.handle('audit:parse', async (_event, filePath: string) => {
+    return parseAuditFile(filePath)
+  })
+
+  ipcMain.handle('settings:get', (_event, key: string) => {
+    return getSetting(key)
+  })
+
+  ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
+    setSetting(key, value)
   })
 
   ipcMain.on('window:minimize', () => mainWindow?.minimize())

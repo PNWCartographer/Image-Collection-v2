@@ -143,6 +143,18 @@
   user-select: none;
 }
 
+.folderCount {
+  font-weight: var(--font-weight-normal);
+  color: var(--text-tertiary);
+}
+
+.emptyGrid {
+  text-align: center;
+  padding: 20px;
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+}
+
 .dateSection {
   display: flex;
   flex-direction: column;

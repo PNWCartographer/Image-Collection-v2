@@ -1,31 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import GlassCard from '../layout/GlassCard'
 import Tooltip from '../common/Tooltip'
+import type { FolderInfo } from '../../../shared/types'
 import styles from './SourcePanel.module.css'
-
-const PLACEHOLDER_FOLDERS = [
-  'M8', 'M10', 'M12', 'M13', 'M14', 'M15', 'M16', 'M17',
-  'M20', 'M21', 'M22', 'M23', 'M24', 'M34', 'M35', 'M38',
-  'M39', 'audits', 'crackimages'
-]
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))
 
+const FOLDER_ZH: Record<string, string> = {
+  audits: '审计',
+  crackimages: '裂纹图像',
+  'GRR Images': 'GRR 图像',
+  version_control: '版本控制',
+  ModelRecogImages: '模型识别图像',
+  Bin: '回收站',
+}
+
 interface SourcePanelProps {
   lang: 'en' | 'zh'
   onToggleLang: () => void
+  onFoldersChange: (selected: string[], rootPath: string) => void
 }
 
-export default function SourcePanel({ lang, onToggleLang }: SourcePanelProps): JSX.Element {
+export default function SourcePanel({ lang, onToggleLang, onFoldersChange }: SourcePanelProps): JSX.Element {
   const [folderPath, setFolderPath] = useState('')
-  const [toggles, setToggles] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {}
-    PLACEHOLDER_FOLDERS.forEach((f) => {
-      init[f] = /^M\d+$/i.test(f)
-    })
-    return init
-  })
+  const [folders, setFolders] = useState<FolderInfo[]>([])
+  const [toggles, setToggles] = useState<Record<string, boolean>>({})
+  const [scanning, setScanning] = useState(false)
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
   const [hourStart, setHourStart] = useState('')
@@ -33,23 +34,85 @@ export default function SourcePanel({ lang, onToggleLang }: SourcePanelProps): J
   const [hourEnd, setHourEnd] = useState('')
   const [minEnd, setMinEnd] = useState('')
 
-  const allChecked = Object.values(toggles).every(Boolean)
-
-  const handleSelectAll = (): void => {
-    const next: Record<string, boolean> = {}
-    PLACEHOLDER_FOLDERS.forEach((f) => {
-      next[f] = !allChecked
+  useEffect(() => {
+    window.electronAPI.settingsGet('lastRootPath').then((saved) => {
+      if (saved && typeof saved === 'string') {
+        setFolderPath(saved)
+        scanFolder(saved)
+      }
     })
-    setToggles(next)
-  }
+  }, [])
 
-  const handleToggle = (folder: string): void => {
-    setToggles((prev) => ({ ...prev, [folder]: !prev[folder] }))
-  }
+  useEffect(() => {
+    const selected = Object.entries(toggles)
+      .filter(([, v]) => v)
+      .map(([k]) => k)
+    onFoldersChange(selected, folderPath)
+  }, [toggles, folderPath])
+
+  const scanFolder = useCallback(async (path: string) => {
+    if (!path) return
+    setScanning(true)
+    try {
+      const result = await window.electronAPI.scanRoot(path)
+      setFolders(result.folders)
+
+      const savedToggles = await window.electronAPI.settingsGet(`toggles:${path}`) as Record<string, boolean> | null
+
+      const newToggles: Record<string, boolean> = {}
+      for (const folder of result.folders) {
+        if (savedToggles && folder.name in savedToggles) {
+          newToggles[folder.name] = savedToggles[folder.name]
+        } else {
+          newToggles[folder.name] = folder.isMachineFolder
+        }
+      }
+      setToggles(newToggles)
+
+      await window.electronAPI.settingsSet('lastRootPath', path)
+      await window.electronAPI.settingsSet(`toggles:${path}`, newToggles)
+    } catch (err) {
+      console.error('Scan failed:', err)
+      setFolders([])
+      setToggles({})
+    } finally {
+      setScanning(false)
+    }
+  }, [])
 
   const handleBrowse = async (): Promise<void> => {
     const path = await window.electronAPI.openFolderDialog()
-    if (path) setFolderPath(path)
+    if (path) {
+      setFolderPath(path)
+      scanFolder(path)
+    }
+  }
+
+  const handleRefresh = (): void => {
+    if (folderPath) scanFolder(folderPath)
+  }
+
+  const handlePathSubmit = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Enter' && folderPath) scanFolder(folderPath)
+  }
+
+  const allChecked = folders.length > 0 && Object.values(toggles).every(Boolean)
+
+  const handleSelectAll = (): void => {
+    const next: Record<string, boolean> = {}
+    folders.forEach((f) => {
+      next[f.name] = !allChecked
+    })
+    setToggles(next)
+    window.electronAPI.settingsSet(`toggles:${folderPath}`, next)
+  }
+
+  const handleToggle = (folderName: string): void => {
+    setToggles((prev) => {
+      const next = { ...prev, [folderName]: !prev[folderName] }
+      window.electronAPI.settingsSet(`toggles:${folderPath}`, next)
+      return next
+    })
   }
 
   return (
@@ -65,6 +128,7 @@ export default function SourcePanel({ lang, onToggleLang }: SourcePanelProps): J
               className={styles.input}
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
+              onKeyDown={handlePathSubmit}
               placeholder={lang === 'en' ? 'Select shared folder root...' : '选择共享文件夹根目录...'}
             />
             <button className={styles.browseBtn} onClick={handleBrowse}>
@@ -80,9 +144,12 @@ export default function SourcePanel({ lang, onToggleLang }: SourcePanelProps): J
       <div className={styles.gridHeader}>
         <span className={styles.label}>
           {lang === 'en' ? 'Search Folders' : '搜索文件夹'}
+          {folders.length > 0 && (
+            <span className={styles.folderCount}> ({folders.length})</span>
+          )}
         </span>
         <div className={styles.gridActions}>
-          <button className={styles.textBtn} onClick={handleSelectAll}>
+          <button className={styles.textBtn} onClick={handleSelectAll} disabled={folders.length === 0}>
             {allChecked
               ? (lang === 'en' ? 'Deselect All' : '取消全选')
               : (lang === 'en' ? 'Select All' : '全选')}
@@ -91,8 +158,10 @@ export default function SourcePanel({ lang, onToggleLang }: SourcePanelProps): J
             ? 'Toggle all detected folders on or off for searching.'
             : '切换所有检测到的文件夹的搜索状态。'}
           />
-          <button className={styles.textBtn} title="Refresh folder list">
-            {lang === 'en' ? '⟳ Refresh' : '⟳ 刷新'}
+          <button className={styles.textBtn} onClick={handleRefresh} disabled={!folderPath || scanning}>
+            {scanning
+              ? (lang === 'en' ? '⟳ Scanning...' : '⟳ 扫描中...')
+              : (lang === 'en' ? '⟳ Refresh' : '⟳ 刷新')}
           </button>
           <Tooltip text={lang === 'en'
             ? 'Re-scan the shared folder to detect any new or removed subfolders since last check.'
@@ -101,19 +170,31 @@ export default function SourcePanel({ lang, onToggleLang }: SourcePanelProps): J
         </div>
       </div>
 
-      <div className={styles.grid}>
-        {PLACEHOLDER_FOLDERS.map((folder) => (
-          <label key={folder} className={styles.checkItem}>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={toggles[folder] ?? false}
-              onChange={() => handleToggle(folder)}
-            />
-            <span className={styles.checkLabel}>{folder}</span>
-          </label>
-        ))}
-      </div>
+      {folders.length > 0 ? (
+        <div className={styles.grid}>
+          {folders.map((folder) => (
+            <label key={folder.name} className={styles.checkItem}>
+              <input
+                type="checkbox"
+                className={styles.checkbox}
+                checked={toggles[folder.name] ?? false}
+                onChange={() => handleToggle(folder.name)}
+              />
+              <span className={styles.checkLabel}>
+                {lang === 'zh' && FOLDER_ZH[folder.name]
+                  ? `${FOLDER_ZH[folder.name]} (${folder.name})`
+                  : folder.name}
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.emptyGrid}>
+          {folderPath
+            ? (lang === 'en' ? 'No subfolders found' : '未找到子文件夹')
+            : (lang === 'en' ? 'Select a shared folder to scan' : '选择共享文件夹以扫描')}
+        </div>
+      )}
 
       <div className={styles.dateSection}>
         <div className={styles.dateRow}>

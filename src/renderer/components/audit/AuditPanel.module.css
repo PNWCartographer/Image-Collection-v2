@@ -87,3 +87,30 @@
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
+
+.summaryWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.warnings {
+  display: flex;
+  gap: 16px;
+}
+
+.warn {
+  font-size: var(--font-size-xs);
+  color: var(--status-orange);
+}
+
+.error {
+  font-size: var(--font-size-sm);
+  color: var(--status-red);
+  padding: 6px 0;
+}
+
+.browseBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
