@@ -113,6 +113,13 @@ After search completes, results are displayed **before export** so the user can 
 | JPEG | Only `.jpg` and `.jpeg` files |
 | Both | All image files (`.bmp`, `.jpg`, `.jpeg`) |
 
+> **Note on BMP files**: BMP images are typically stored **locally on the scanning machine**, not on the NAS. Users who need BMP images should install the tool on the specific machine and use a local path as the source (supported via the multi-source feature). The NAS primarily stores JPEG scan images, MR `.png` images, and metadata.
+
+**AI Detection Images Toggle:**
+| Toggle | Default | Behavior |
+|--------|---------|----------|
+| AI Images Only | OFF | When ON, collects only the contents of the `FD/` subfolder within each matched IMEI folder (AI detection images). Standard scan images at the IMEI folder root are excluded. When OFF, standard export copies the entire IMEI folder contents including FD/. |
+
 **Model Recognition (MR) Image Toggles:**
 
 MR images are collected from a **separate directory tree** (`ModelRecogImages/`) under each machine folder, not from the standard IMEI_Index folders. The system sorts MR images by AI recognition result: correctly identified devices go into `{Brand}-{Model}` folders (PASS), while misidentified devices go into `Error-Error` (FAIL).
@@ -227,6 +234,7 @@ All settings persist between sessions via electron-store:
 | Duplicate handling | Yes | — |
 | MR PASS toggle | Yes | — |
 | MR FAIL toggle | Yes | — |
+| AI Images Only toggle | Yes | — |
 | Theme (Dark/Light) | Yes | — |
 | Window size/position | Yes | — |
 | Last destination path | Yes | — |
@@ -241,7 +249,6 @@ The following features exist in v1 but require additional specification before i
 
 - **AutoMode**: Functionality TBD — awaiting v1 documentation from engineering team
 - **Rescan Image Collection**: Tab/feature from v1 — awaiting v1 documentation
-- **FD subfolder**: Purpose and contents of the `FD/` subfolder within IMEI folders — awaiting clarification
 - **Coworker-requested features**: Additional feature requests to be incorporated after initial analysis
 
 ---

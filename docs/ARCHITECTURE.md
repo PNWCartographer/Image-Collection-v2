@@ -207,7 +207,8 @@ interface ExportConfig {
   organization: 'flat' | 'by_machine' | 'by_date' | 'machine_date' | 'date_machine' | 'by_imei' | 'by_scan_index';
   duplicateHandling: 'skip' | 'overwrite';
   mrPass: boolean;                 // export MR PASS images only
-  mrFail: boolean;                 // export MR FAIL images only (path TBD)
+  mrFail: boolean;                 // export MR FAIL images only
+  aiImagesOnly: boolean;           // export only FD/ subfolder contents
 }
 
 // IPC Channels:
@@ -276,6 +277,7 @@ interface AppSettings {
   duplicateHandling: 'skip' | 'overwrite';
   mrPass: boolean;
   mrFail: boolean;
+  aiImagesOnly: boolean;
   incompleteDetectionSecondary: boolean;
   theme: 'dark' | 'light' | 'system';
   searchHistory: SearchHistoryEntry[];
@@ -304,7 +306,8 @@ App
 │   ├── OrganizationSelect (nesting depth dropdown)
 │   ├── DuplicateSelect (Skip/Overwrite dropdown)
 │   ├── MRPassToggle (MR PASS image switch)
-│   ├── MRFailToggle (MR FAIL image switch — path TBD)
+│   ├── MRFailToggle (MR FAIL image switch)
+│   ├── AIImagesToggle (AI detection images only switch)
 │   ├── ScanIndexFilter (All/First/Rescans dropdown)
 │   └── DestinationBrowser (path input + browse button)
 ├── ResultsPanel
