@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\klars\\\\Documents\\\\GitHub\\\\Image-Collection-v2\\\\docs\" -Force)"
+    ]
+  }
+}
