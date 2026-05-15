@@ -253,7 +253,38 @@ The following features exist in v1 but require additional specification before i
 
 ---
 
-## 5. Non-Functional Requirements
+## 5. Packaging & Distribution
+
+**Installer (NSIS):**
+- Install path: `C:\Program Files\Image Collection v2\`
+- Desktop shortcut option (checkbox, default ON)
+- Start Menu shortcut option (checkbox, default ON)
+- App icon (.ico) for exe, installer, and shortcuts
+
+**Uninstaller:**
+- Removes ALL files, shortcuts, registry entries, and app data
+- Clean uninstall with zero remnants
+- Registered in Windows Add/Remove Programs (Programs and Features)
+
+**Build:**
+- Production build: minified, tree-shaken, dev dependencies excluded
+- Must run on target production machines without Node.js installed
+
+---
+
+## 6. Documentation
+
+A comprehensive `README.md` serves as the primary user-facing reference:
+- Quick Start guide (installation, first launch, basic workflow)
+- Full settings reference for every parameter, option, and toggle
+- Output organization examples with folder structure diagrams
+- Export report color coding reference
+- Installation and uninstallation instructions
+- System requirements and troubleshooting
+
+---
+
+## 7. Non-Functional Requirements
 
 - **Startup time**: App should be usable within 3 seconds of launch
 - **Search performance**: Scanning 20 machine folders × 30 date folders should complete in under 60 seconds on a typical NAS connection

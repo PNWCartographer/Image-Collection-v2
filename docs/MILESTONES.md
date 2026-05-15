@@ -260,19 +260,45 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 ---
 
 ## Milestone 12: Packaging & Distribution
-> **Gate**: Installable .exe runs on production floor machines without Node.js installed
+> **Gate**: Install from .exe → app appears in Start Menu + Desktop → runs and connects to NAS → uninstall via Add/Remove Programs → zero remnants
 
 | # | Task | Details |
 |---|------|---------|
-| 12.1 | Configure electron-builder | Windows target: NSIS installer or MSI |
-| 12.2 | App icon | Design and integrate app icon (.ico) |
-| 12.3 | Installer branding | Installer wizard with app name and logo |
-| 12.4 | Code signing | Optional: sign the .exe to avoid SmartScreen warnings |
-| 12.5 | Production build | Optimize: minify, tree-shake, remove dev dependencies |
-| 12.6 | Target machine testing | Test on actual production floor PCs (verify NAS access, permissions) |
-| 12.7 | Auto-updater | Optional: electron-updater for future version deployment |
+| 12.1 | Configure electron-builder | Windows target: NSIS installer |
+| 12.2 | Install path | `C:\Program Files\Image Collection v2\` (standard ProgramFiles) |
+| 12.3 | Installer shortcuts | Desktop shortcut (checkbox, default ON), Start Menu shortcut (checkbox, default ON) |
+| 12.4 | Uninstaller | Removes ALL files, shortcuts, registry entries, and app data — clean uninstall with no remnants |
+| 12.5 | Register in Add/Remove Programs | Uninstaller appears in Windows Programs and Features |
+| 12.6 | App icon and branding | .ico for exe, installer, and shortcuts |
+| 12.7 | Production build | Optimize: minify, tree-shake, remove dev dependencies |
+| 12.8 | Target machine testing | Test on actual production floor PCs (verify NAS access, permissions, no Node.js dependency) |
+| 12.9 | Code signing | Optional: sign the .exe to avoid SmartScreen warnings |
 
-**Checkpoint**: Build installer. Install on a clean Windows machine (no Node.js). App launches, connects to NAS, runs a full search+export cycle successfully.
+**Checkpoint**: Build installer. Install on a clean Windows machine → app in Start Menu + Desktop. Launch → connects to NAS, runs a full search+export cycle. Uninstall via Add/Remove Programs → zero files, shortcuts, or registry entries left behind.
+
+---
+
+## Milestone 13: Comprehensive README
+> **Gate**: A new user can read the README and understand every feature, setting, and toggle without outside help
+
+| # | Task | Details |
+|---|------|---------|
+| 13.1 | Quick Start section | Installation, first launch, basic workflow |
+| 13.2 | Features overview | Bullet-point summary of all capabilities |
+| 13.3 | Source configuration docs | Shared folder, multi-source, folder toggles |
+| 13.4 | Audit list import docs | Supported formats (CSV, XLSX, TXT), IMEI validation rules, drag-and-drop |
+| 13.5 | Search filters docs | Date range filter, scan index filter |
+| 13.6 | Export settings docs | Action (Move/Copy), Image Type, Organization mode (all 7), Duplicates |
+| 13.7 | MR & AI toggle docs | MR PASS, MR FAIL, AI Images Only — what each does, when to use |
+| 13.8 | Export report docs | Color coding reference (green/orange/red), report columns |
+| 13.9 | Output organization examples | Folder structure diagrams for each of the 7 modes |
+| 13.10 | Theme & preferences docs | Dark/light mode, search history, settings persistence |
+| 13.11 | Installation & uninstall | Step-by-step instructions for install and clean uninstall |
+| 13.12 | System requirements | Windows version, NAS connectivity, disk space |
+| 13.13 | Troubleshooting | Common issues: NAS unreachable, permissions, file locks |
+| 13.14 | Known limitations | Pending features, platform restrictions |
+
+**Checkpoint**: Hand README to someone unfamiliar with the tool. They can install, configure a source, import an audit list, run a search, export results, and understand the report — all from the README alone.
 
 ---
 
@@ -287,7 +313,7 @@ M0 (Scaffold)
       └─► M7 (Theming)
            └─► M8 (Multi-Source + History)
                 └─► M9 (Polish)
-                     ├─► M10a (MR PASS) ─┬─► M12 (Packaging)
+                     ├─► M10a (MR PASS) ─┬─► M12 (Packaging) ──► M13 (README)
                      ├─► M10b (MR FAIL) ┘
                      └─► M11 (Pending) [blocked on v1 docs]
 ```

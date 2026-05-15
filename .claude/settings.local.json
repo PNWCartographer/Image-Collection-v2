@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\klars\\\\Documents\\\\GitHub\\\\Image-Collection-v2\\\\docs\" -Force)"
+      "PowerShell(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\klars\\\\Documents\\\\GitHub\\\\Image-Collection-v2\\\\docs\" -Force)",
+      "PowerShell(Get-Command node -ErrorAction SilentlyContinue; Get-Command npm -ErrorAction SilentlyContinue; Get-Command nvm -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:APPDATA\\\\nvm\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\fnm\" -ErrorAction SilentlyContinue)"
     ]
   }
 }

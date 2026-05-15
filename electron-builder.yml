@@ -1,0 +1,23 @@
+appId: com.imagecollection.v2
+productName: Image Collection v2
+directories:
+  output: release
+  buildResources: resources
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: false
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Image Collection v2
+  installDir: "C:\\Program Files\\Image Collection v2"
+  deleteAppDataOnUninstall: true
+files:
+  - out/**/*
+  - "!node_modules"
