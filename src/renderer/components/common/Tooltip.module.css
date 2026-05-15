@@ -1,15 +1,11 @@
-.wrapper {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  margin-left: 6px;
-}
-
 .icon {
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
   cursor: help;
   transition: color var(--transition-fast);
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .icon:hover {
@@ -17,33 +13,23 @@
 }
 
 .bubble {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   width: max-content;
   max-width: 280px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: var(--bg-tooltip);
   border: 1px solid var(--border-tooltip);
   border-radius: var(--radius-md);
+  font-family: var(--font-family);
   font-size: var(--font-size-xs);
   color: var(--text-tooltip);
   line-height: 1.5;
   box-shadow: var(--shadow-elevated);
-  z-index: 100;
+  z-index: 10000;
   pointer-events: none;
-  animation: fadeIn 200ms ease;
-}
-
-.above {
-  bottom: calc(100% + 8px);
-}
-
-.below {
-  top: calc(100% + 8px);
+  animation: fadeIn 150ms ease;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

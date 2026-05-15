@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import styles from './Tooltip.module.css'
 
 interface TooltipProps {
@@ -7,31 +8,46 @@ interface TooltipProps {
 
 export default function Tooltip({ text }: TooltipProps): JSX.Element {
   const [visible, setVisible] = useState(false)
-  const [above, setAbove] = useState(true)
+  const [pos, setPos] = useState({ top: 0, left: 0, above: true })
   const iconRef = useRef<HTMLSpanElement>(null)
 
-  useEffect(() => {
-    if (visible && iconRef.current) {
-      const rect = iconRef.current.getBoundingClientRect()
-      setAbove(rect.top > 120)
-    }
-  }, [visible])
+  const show = useCallback(() => {
+    if (!iconRef.current) return
+    const rect = iconRef.current.getBoundingClientRect()
+    const above = rect.top > 150
+    setPos({
+      top: above ? rect.top - 8 : rect.bottom + 8,
+      left: Math.min(rect.left, window.innerWidth - 300),
+      above
+    })
+    setVisible(true)
+  }, [])
 
   return (
-    <span className={styles.wrapper}>
+    <>
       <span
         ref={iconRef}
         className={styles.icon}
-        onMouseEnter={() => setVisible(true)}
+        onMouseEnter={show}
         onMouseLeave={() => setVisible(false)}
       >
         ⓘ
       </span>
-      {visible && (
-        <div className={`${styles.bubble} ${above ? styles.above : styles.below}`}>
-          {text}
-        </div>
-      )}
-    </span>
+      {visible &&
+        createPortal(
+          <div
+            className={styles.bubble}
+            style={{
+              position: 'fixed',
+              top: pos.above ? undefined : pos.top,
+              bottom: pos.above ? window.innerHeight - pos.top : undefined,
+              left: pos.left
+            }}
+          >
+            {text}
+          </div>,
+          document.body
+        )}
+    </>
   )
 }

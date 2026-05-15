@@ -33,6 +33,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  z-index: 200;
 }
 
 .orgLabel {
@@ -78,8 +79,9 @@
   border: 1px solid var(--border-tooltip);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-elevated);
-  z-index: 50;
-  overflow: hidden;
+  z-index: 200;
+  overflow-y: auto;
+  max-height: 400px;
   animation: dropIn 150ms ease-out;
 }
 

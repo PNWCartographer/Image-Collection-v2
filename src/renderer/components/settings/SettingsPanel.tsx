@@ -52,11 +52,6 @@ const ORGANIZE_OPTIONS = [
     value: 'by-imei',
     label: 'By IMEI',
     desc: 'Groups all instances of the same device across machines/dates. Example: dest/350002267153742/M8_20260515_192/'
-  },
-  {
-    value: 'by-scan-index',
-    label: 'By Scan Index',
-    desc: 'Separates first scans from later scans. Example: dest/scan_1/IMEI_index/, dest/scan_2/IMEI_index/'
   }
 ]
 
@@ -95,7 +90,7 @@ export default function SettingsPanel({ lang }: SettingsPanelProps): JSX.Element
   const selectedOrgLabel = ORGANIZE_OPTIONS.find((o) => o.value === organize)?.label ?? 'Flat'
 
   return (
-    <GlassCard title={lang === 'en' ? 'Settings' : '设置'} delay={0.1}>
+    <GlassCard title={lang === 'en' ? 'Settings' : '设置'} delay={0.1} elevated={orgOpen}>
       <div className={styles.grid}>
         <div className={styles.row}>
           <Select
