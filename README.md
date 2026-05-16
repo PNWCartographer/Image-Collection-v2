@@ -195,7 +195,7 @@ A match is flagged as incomplete (orange dot) when its file count is less than 5
 Every export generates a detailed log file in the app's user data directory:
 
 ```
-%APPDATA%/image-collection-v2/logs/export-YYYYMMDD-HHmmss.log
+%APPDATA%/Image Collection v2/logs/export-YYYYMMDD-HHmmss.log
 ```
 
 Each log includes:
@@ -312,7 +312,7 @@ Run the NSIS installer. It will:
 - Register in **Add/Remove Programs** for clean uninstall
 - Optionally launch the app after installation (checkbox on the finish page)
 
-No admin access is required after installation. The app stores settings and logs in `%APPDATA%/image-collection-v2/`.
+No admin access is required after installation. The app stores settings and logs in `%APPDATA%/Image Collection v2/`.
 
 ### Uninstall
 
@@ -347,3 +347,4 @@ Use **Add/Remove Programs** (Settings > Apps > Installed apps). The uninstaller 
 | [UI Spec](docs/UI-SPEC.md) | Liquid Glass theme, layout, components, animations |
 | [Milestones](docs/MILESTONES.md) | Development roadmap with stop-gap gates |
 | [Directory Schema](docs/DIRECTORY-SCHEMA.md) | NAS folder hierarchy and naming conventions |
+| [Test Procedure](docs/TEST-PROCEDURE.md) | Manual QA checklist for all features |
