@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import GlassCard from '../layout/GlassCard'
 import Select from '../common/Select'
@@ -89,6 +89,12 @@ export interface SettingsState {
   destination: string
 }
 
+const VALID_ORGANIZE_VALUES = new Set(ORGANIZE_OPTIONS.map((o) => o.value))
+
+function isOneOf<T extends string>(value: unknown, valid: readonly T[]): value is T {
+  return typeof value === 'string' && (valid as readonly string[]).includes(value)
+}
+
 interface SettingsPanelProps {
   lang: 'en' | 'zh'
   onSettingsChange?: (settings: SettingsState) => void
@@ -115,10 +121,10 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
       if (saved && typeof saved === 'object') {
         const s = saved as Record<string, unknown>
         if (s.action === 'copy') setAction('copy') // Never restore 'move' for safety
-        if (s.imageType === 'both' || s.imageType === 'bmp' || s.imageType === 'jpeg') setImageType(s.imageType)
-        if (s.organize === 'flat' || s.organize === 'by-machine' || s.organize === 'by-date' || s.organize === 'machine-date' || s.organize === 'date-machine' || s.organize === 'by-imei') setOrganize(s.organize)
-        if (s.duplicates === 'skip' || s.duplicates === 'overwrite') setDuplicates(s.duplicates)
-        if (s.scanIndex === 'all' || s.scanIndex === 'first_only') setScanIndex(s.scanIndex)
+        if (isOneOf(s.imageType, ['both', 'bmp', 'jpeg'] as const)) setImageType(s.imageType)
+        if (typeof s.organize === 'string' && VALID_ORGANIZE_VALUES.has(s.organize as SettingsState['organize'])) setOrganize(s.organize as SettingsState['organize'])
+        if (isOneOf(s.duplicates, ['skip', 'overwrite'] as const)) setDuplicates(s.duplicates)
+        if (isOneOf(s.scanIndex, ['all', 'first_only'] as const)) setScanIndex(s.scanIndex)
         if (typeof s.mrPass === 'boolean') setMrPass(s.mrPass)
         if (typeof s.mrFail === 'boolean') setMrFail(s.mrFail)
         if (typeof s.aiImages === 'boolean') setAiImages(s.aiImages)
@@ -136,14 +142,23 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
     }
   }
 
-  // Notify parent and persist on every change (skip until initial load completes)
+  // Notify parent immediately on every change
+  const settings = useMemo(
+    () => ({ action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination }),
+    [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination]
+  )
   useEffect(() => {
-    const settings = { action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination }
     onSettingsChange?.(settings)
-    if (loaded) {
+  }, [settings, onSettingsChange])
+
+  // Debounce persistence to avoid excessive disk writes during typing
+  useEffect(() => {
+    if (!loaded) return
+    const timer = setTimeout(() => {
       window.electronAPI.settingsSet('settingsPanel', settings)
-    }
-  }, [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination, loaded, onSettingsChange])
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [settings, loaded])
 
   const closeOrgDropdown = useCallback(() => setOrgOpen(false), [])
   useClickOutside(orgRef, closeOrgDropdown)

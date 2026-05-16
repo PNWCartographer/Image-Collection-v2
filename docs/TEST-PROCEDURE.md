@@ -1,6 +1,6 @@
 # Image Collection v2 — Test Procedure
 
-**Covers:** Milestones 0–4 + bilingual support + portable build  
+**Covers:** All implemented milestones — UI, search, export, multi-source, history, bilingual, packaging  
 **Last updated:** 2026-05-15
 
 ---
@@ -79,7 +79,7 @@
 |---|------|----------|
 | 5.1 | Click date picker for Start Date | Calendar opens, can select a date |
 | 5.2 | Click date picker for End Date | Calendar opens, can select a date |
-| 5.3 | Set start date after end date | Search still runs (searches empty range, returns no matches) |
+| 5.3 | Set start date after end date | Warning text appears: "Start date is after end date — no results will match" |
 | 5.4 | Leave both dates blank | No date range filter applied (all dates searched) |
 | 5.5 | Hover date range tooltip | Shows explanation in current language |
 
@@ -226,7 +226,125 @@
 
 ---
 
+## 16. Multi-Source Manager
+
+| # | Test | Expected |
+|---|------|----------|
+| 16.1 | Browse to a NAS root, click [+] | Name input appears with focus |
+| 16.2 | Type a source name and press Enter | Source saved, appears in dropdown |
+| 16.3 | Browse to a different NAS root, save as new source | Second source appears in dropdown |
+| 16.4 | Switch between sources via dropdown | Path updates, folder toggles restore per source |
+| 16.5 | Toggle folders for source A, switch to source B, switch back to A | Source A folder toggles are preserved independently |
+| 16.6 | Click [−] to delete a source | Confirmation prompt appears with source name |
+| 16.7 | Confirm deletion | Source removed from dropdown, next source activated |
+| 16.8 | Cancel deletion | Source remains unchanged |
+| 16.9 | Close and reopen | Active source and all saved sources persist |
+| 16.10 | Rapidly switch between 3+ sources | UI always shows the most recently selected source (no stale data) |
+
+---
+
+## 17. Export — Copy Mode
+
+| # | Test | Expected |
+|---|------|----------|
+| 17.1 | Run search, set Action to Copy, set Destination, click Export | Progress bar shows export progress, status bar updates |
+| 17.2 | Wait for export to complete | Status bar shows "Export complete · N exported · M skipped · F failed · elapsed" |
+| 17.3 | Verify destination folder | IMEI folders appear at destination with correct images |
+| 17.4 | Verify source folders unchanged | Original NAS folders still present after copy |
+| 17.5 | Click Cancel Export mid-operation | Export stops, partial results at destination |
+
+---
+
+## 18. Export — Move Mode
+
+| # | Test | Expected |
+|---|------|----------|
+| 18.1 | Change Action to Move | Warning modal appears with bold warning text |
+| 18.2 | Click Cancel on warning | Action remains Copy |
+| 18.3 | Click "I Understand, Use Move" | Action changes to Move |
+| 18.4 | Run export in Move mode | IMEI folders appear at destination, source folders are deleted |
+| 18.5 | Close and reopen | Action resets to Copy (safety default) |
+
+---
+
+## 19. Export — Image Type Filter
+
+| # | Test | Expected |
+|---|------|----------|
+| 19.1 | Set Image Type to BMP, run export | Only .bmp files at destination |
+| 19.2 | Set Image Type to JPEG, run export | Only .jpg/.jpeg files at destination |
+| 19.3 | Set Image Type to Both, run export | All image files at destination |
+
+---
+
+## 20. Export — Organization Modes
+
+| # | Test | Expected |
+|---|------|----------|
+| 20.1 | Set Organize to Flat, export | All IMEI folders directly in destination root |
+| 20.2 | Set Organize to By Machine, export | Folders grouped under machine names (e.g. dest/M8/IMEI_idx/) |
+| 20.3 | Set Organize to By Date, export | Folders grouped under date names (e.g. dest/20260515/IMEI_idx/) |
+| 20.4 | Set Organize to Machine → Date, export | Two-level nesting: dest/M8/20260515/IMEI_idx/ |
+| 20.5 | Set Organize to Date → Machine, export | Two-level nesting: dest/20260515/M8/IMEI_idx/ |
+| 20.6 | Set Organize to By IMEI, export | Grouped by IMEI: dest/350.../M8_20260515_192/ |
+
+---
+
+## 21. Export — Duplicate Handling
+
+| # | Test | Expected |
+|---|------|----------|
+| 21.1 | Export same results twice with Duplicates = Skip | Second export skips all, status shows N skipped |
+| 21.2 | Export same results twice with Duplicates = Overwrite | Second export replaces all existing folders |
+
+---
+
+## 22. Export — AI Images Only
+
+| # | Test | Expected |
+|---|------|----------|
+| 22.1 | Enable AI Images Only, run export | Only FD/ subfolder contents exported for each match |
+| 22.2 | Export IMEI folder that has no FD/ subfolder | Folder counted as failed, logged as "FD/ subfolder not found" |
+| 22.3 | Disable AI Images Only, run export | Full IMEI folder exported including FD/ as subfolder |
+
+---
+
+## 23. Export — MR Image Export
+
+| # | Test | Expected |
+|---|------|----------|
+| 23.1 | Enable MR PASS, run search and export | .png files exported with correct naming and organization |
+| 23.2 | Enable MR FAIL, run search and export | Error-Error .png files exported |
+| 23.3 | Enable both MR PASS and MR FAIL | Combined results from Brand-Model and Error-Error folders |
+| 23.4 | MR export in Move mode | MR images are always copied (never deleted from source) |
+
+---
+
+## 24. Export Log
+
+| # | Test | Expected |
+|---|------|----------|
+| 24.1 | Complete an export, click "View Log" in status bar | Logs folder opens in Explorer |
+| 24.2 | Verify log file contents | Header with settings, per-file entries, summary with throughput |
+| 24.3 | Run 4 exports | Only 3 most recent log files remain (oldest rotated) |
+
+---
+
+## 25. Search History
+
+| # | Test | Expected |
+|---|------|----------|
+| 25.1 | Complete a search, click History button | Dropdown shows the search entry |
+| 25.2 | Verify history entry content | Timestamp, source name, IMEI count, match count, elapsed time |
+| 25.3 | Run 6 searches | History shows only the 5 most recent |
+| 25.4 | History entry with date range | Date range displayed in the entry |
+| 25.5 | History entry with MR enabled | MR badge visible on the entry |
+| 25.6 | Click outside history dropdown | Dropdown closes |
+| 25.7 | Close and reopen | Search history persists across sessions |
+
+---
+
 ## Not Yet Testable (Future Milestones)
 
-- **Export Summary Report** — color-coded CSV/Excel (Milestone 6b)
-- **NSIS installer** — full install/uninstall (Milestone 12)
+- **AutoMode** — awaiting implementation spec from engineering team
+- **Rescan Image Collection** — awaiting implementation spec from engineering team

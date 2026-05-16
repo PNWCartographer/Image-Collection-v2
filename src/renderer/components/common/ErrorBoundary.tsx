@@ -9,6 +9,30 @@ interface State {
   error: Error | null
 }
 
+function getLang(): 'en' | 'zh' {
+  try {
+    // Read from localStorage as a synchronous fallback (electron-store is async)
+    const raw = localStorage.getItem('appLang')
+    if (raw === 'zh') return 'zh'
+  } catch {
+    // localStorage may not be available
+  }
+  return 'en'
+}
+
+const TEXT = {
+  en: {
+    heading: 'Something went wrong',
+    fallback: 'An unexpected error occurred.',
+    button: 'Try Again'
+  },
+  zh: {
+    heading: '出现错误',
+    fallback: '发生了意外错误。',
+    button: '重试'
+  }
+}
+
 export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props)
@@ -29,6 +53,8 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.hasError) {
+      const lang = getLang()
+      const t = TEXT[lang]
       return (
         <div style={{
           display: 'flex',
@@ -45,10 +71,10 @@ export default class ErrorBoundary extends Component<Props, State> {
         }}>
           <div style={{ fontSize: '48px' }}>!</div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>
-            Something went wrong
+            {t.heading}
           </h2>
           <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-tertiary, #888)', maxWidth: '400px' }}>
-            {this.state.error?.message || 'An unexpected error occurred.'}
+            {this.state.error?.message || t.fallback}
           </p>
           <button
             onClick={this.handleReload}
@@ -64,7 +90,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               marginTop: '8px'
             }}
           >
-            Try Again
+            {t.button}
           </button>
         </div>
       )

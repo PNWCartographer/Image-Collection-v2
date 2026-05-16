@@ -46,8 +46,6 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
       return join(dest, match.date, match.machineName, match.folderName)
     case 'by-imei':
       return join(dest, match.imei, `${match.machineName}_${match.date}_${match.scanIndex}`)
-    default:
-      return join(dest, match.folderName)
   }
 }
 
@@ -72,8 +70,6 @@ function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportR
       return join(dest, match.date, match.machineName, fileName)
     case 'by-imei':
       return join(dest, match.imei, `${match.machineName}_${match.date}_${mrTag}.png`)
-    default:
-      return join(dest, `${match.imei}_${match.machineName}_${match.date}_${mrTag}.png`)
   }
 }
 
@@ -177,12 +173,25 @@ async function copyFolderParallel(
   return { filesCopied, bytesCopied }
 }
 
-async function removeSource(folderPath: string): Promise<void> {
+async function removeSource(folderPath: string): Promise<boolean> {
   try {
     await rm(folderPath, { recursive: true, force: true })
+    return true
   } catch {
-    // Best-effort — don't fail the export if cleanup fails
+    return false
   }
+}
+
+/** Record a failed export item and log it. */
+function recordFailure(
+  err: unknown,
+  match: SearchMatch,
+  failedItems: ExportResult['failedItems'],
+  logger: ExportLogger
+): void {
+  const errMsg = err instanceof Error ? err.message : String(err)
+  failedItems.push({ imei: match.imei, sourcePath: match.sourcePath, error: errMsg })
+  logger.error(`  ✗ FAILED — ${errMsg}`)
 }
 
 // ── Main export function ────────────────────────────────────────────
@@ -300,13 +309,7 @@ export async function exportResults(
         // MR exports always copy — never delete source MR images from NAS
       } catch (err) {
         failed++
-        const errMsg = err instanceof Error ? err.message : String(err)
-        failedItems.push({
-          imei: match.imei,
-          sourcePath: match.sourcePath,
-          error: errMsg
-        })
-        logger.error(`  ✗ FAILED — ${errMsg}`)
+        recordFailure(err, match, failedItems, logger)
       }
     } else {
       // ── Standard export: folder-level copy ──
@@ -341,14 +344,9 @@ export async function exportResults(
         )
 
         if (copyResult === null) {
-          // FD/ subfolder missing in AI Images mode
           fdMissingCount++
           failed++
-          failedItems.push({
-            imei: match.imei,
-            sourcePath: match.sourcePath,
-            error: 'FD/ subfolder not found (AI Images mode)'
-          })
+          failedItems.push({ imei: match.imei, sourcePath: match.sourcePath, error: 'FD/ subfolder not found (AI Images mode)' })
           logger.warn(`  ✗ SKIPPED — FD/ subfolder not found`)
           sendProgress(match)
           return
@@ -362,18 +360,16 @@ export async function exportResults(
         logger.info(`  ✓ ${copyResult.filesCopied} files  (${formatBytes(copyResult.bytesCopied)})  ${elapsed}ms`)
 
         if (action === 'move') {
-          await removeSource(match.sourcePath)
-          logger.warn(`  Source deleted (move mode)`)
+          const removed = await removeSource(match.sourcePath)
+          if (removed) {
+            logger.warn(`  Source deleted (move mode)`)
+          } else {
+            logger.error(`  Source deletion FAILED — files may still exist at ${match.sourcePath}`)
+          }
         }
       } catch (err) {
         failed++
-        const errMsg = err instanceof Error ? err.message : String(err)
-        failedItems.push({
-          imei: match.imei,
-          sourcePath: match.sourcePath,
-          error: errMsg
-        })
-        logger.error(`  ✗ FAILED — ${errMsg}`)
+        recordFailure(err, match, failedItems, logger)
       }
     }
 

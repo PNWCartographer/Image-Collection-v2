@@ -55,11 +55,17 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
   const activeSource = sources.find((s) => s.id === activeSourceId)
 
   // ── Scan folder and apply saved toggles ──
+  const scanIdRef = useRef(0)
+
   const scanFolder = useCallback(async (path: string, savedToggles?: Record<string, boolean>) => {
     if (!path) return
+    const thisId = ++scanIdRef.current
     setScanning(true)
     try {
       const result = await window.electronAPI.scanRoot(path)
+      // Discard stale results from earlier scans (rapid source switching)
+      if (scanIdRef.current !== thisId) return
+
       setFolders(result.folders)
 
       const newToggles: Record<string, boolean> = {}
@@ -72,11 +78,14 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       }
       setToggles(newToggles)
     } catch (err) {
+      if (scanIdRef.current !== thisId) return
       console.error('Scan failed:', err)
       setFolders([])
       setToggles({})
     } finally {
-      setScanning(false)
+      if (scanIdRef.current === thisId) {
+        setScanning(false)
+      }
     }
   }, [])
 
@@ -117,8 +126,12 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
     })()
   }, [scanFolder])
 
-  // ── Notify parent when folders / path / source change ──
+  // ── Notify parent when folders / path / source change (skip until first scan completes) ──
+  const initializedRef = useRef(false)
+
   useEffect(() => {
+    if (!initializedRef.current && Object.keys(toggles).length === 0) return
+    initializedRef.current = true
     const selected = Object.entries(toggles)
       .filter(([, v]) => v)
       .map(([k]) => k)

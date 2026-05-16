@@ -21,6 +21,67 @@ export function cancelSearch(): void {
   activeToken.cancelled = true
 }
 
+interface SearchContext {
+  token: CancelToken
+  startTime: number
+  imeiSet: Set<string>
+  matches: SearchMatch[]
+  foundIMEIs: Set<string>
+}
+
+function createSearchContext(imeis: string[]): SearchContext {
+  const token = { cancelled: false }
+  activeToken = token
+  return {
+    token,
+    startTime: Date.now(),
+    imeiSet: new Set(imeis),
+    matches: [],
+    foundIMEIs: new Set<string>()
+  }
+}
+
+type DateFolder = { machine: string; datePath: string; dateStr: string }
+
+function createProgressTracker(
+  dateFolders: DateFolder[],
+  matches: SearchMatch[],
+  onProgress: (progress: SearchProgress) => void
+): { sendProgress: (machine: string, dateStr: string) => void; foldersScanned: { value: number } } {
+  const totalFolders = dateFolders.length
+  const foldersScanned = { value: 0 }
+  let lastProgressTime = 0
+
+  const sendProgress = (machine: string, dateStr: string): void => {
+    const now = Date.now()
+    if (now - lastProgressTime < 150) return
+    lastProgressTime = now
+    onProgress({
+      phase: 'scanning',
+      percent: totalFolders > 0 ? (foldersScanned.value / totalFolders) * 100 : 0,
+      currentMachine: machine,
+      currentDate: dateStr,
+      matchesSoFar: matches.length,
+      foldersScanned: foldersScanned.value,
+      totalFolders,
+    })
+  }
+
+  if (dateFolders.length > 0) {
+    onProgress({
+      phase: 'scanning',
+      percent: 0,
+      currentMachine: dateFolders[0].machine,
+      currentDate: dateFolders[0].dateStr,
+      matchesSoFar: 0,
+      foldersScanned: 0,
+      totalFolders,
+    })
+  }
+
+  return { sendProgress, foldersScanned }
+}
+
 export async function searchIMEIs(
   request: SearchRequest,
   onProgress: (progress: SearchProgress) => void,
@@ -31,16 +92,10 @@ export async function searchIMEIs(
     return searchMRImages(request, onProgress, onMatches)
   }
 
-  const token = { cancelled: false }
-  activeToken = token
-  const startTime = Date.now()
-
-  const imeiSet = new Set(request.imeis)
-  const matches: SearchMatch[] = []
-  const foundIMEIs = new Set<string>()
+  const ctx = createSearchContext(request.imeis)
+  const { token, imeiSet, matches, foundIMEIs, startTime } = ctx
 
   // Phase 1: Discover date folders (parallel across machines)
-  type DateFolder = { machine: string; datePath: string; dateStr: string }
   const dateFolders: DateFolder[] = []
 
   await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
@@ -69,37 +124,7 @@ export async function searchIMEIs(
 
   if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, token, onProgress)
 
-  const totalFolders = dateFolders.length
-  let foldersScanned = 0
-  let lastProgressTime = 0
-
-  const sendProgress = (machine: string, dateStr: string): void => {
-    const now = Date.now()
-    if (now - lastProgressTime < 150) return
-    lastProgressTime = now
-    onProgress({
-      phase: 'scanning',
-      percent: totalFolders > 0 ? (foldersScanned / totalFolders) * 100 : 0,
-      currentMachine: machine,
-      currentDate: dateStr,
-      matchesSoFar: matches.length,
-      foldersScanned,
-      totalFolders,
-    })
-  }
-
-  // Send initial progress
-  if (dateFolders.length > 0) {
-    onProgress({
-      phase: 'scanning',
-      percent: 0,
-      currentMachine: dateFolders[0].machine,
-      currentDate: dateFolders[0].dateStr,
-      matchesSoFar: 0,
-      foldersScanned: 0,
-      totalFolders,
-    })
-  }
+  const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
 
   // Phase 2: Scan date folders for IMEI matches (parallel pool)
   await pooled(dateFolders, CONCURRENCY, token, async ({ machine, datePath, dateStr }) => {
@@ -167,10 +192,10 @@ export async function searchIMEIs(
       // Date folder not accessible
     }
 
-    foldersScanned++
+    foldersScanned.value++
   })
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, token, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, token, onProgress)
 }
 
 function buildResult(
@@ -256,17 +281,11 @@ async function searchMRImages(
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
 ): Promise<SearchResult> {
-  const token = { cancelled: false }
-  activeToken = token
-  const startTime = Date.now()
-
-  const imeiSet = new Set(request.imeis)
-  const matches: SearchMatch[] = []
-  const foundIMEIs = new Set<string>()
+  const ctx = createSearchContext(request.imeis)
+  const { token, imeiSet, matches, foundIMEIs, startTime } = ctx
 
   // Phase 1: Discover date folders inside ModelRecogImages per machine
-  type MRDateFolder = { machine: string; datePath: string; dateStr: string }
-  const dateFolders: MRDateFolder[] = []
+  const dateFolders: DateFolder[] = []
 
   await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
     if (token.cancelled) return
@@ -293,36 +312,7 @@ async function searchMRImages(
 
   if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, token, onProgress)
 
-  const totalFolders = dateFolders.length
-  let foldersScanned = 0
-  let lastProgressTime = 0
-
-  const sendProgress = (machine: string, dateStr: string): void => {
-    const now = Date.now()
-    if (now - lastProgressTime < 150) return
-    lastProgressTime = now
-    onProgress({
-      phase: 'scanning',
-      percent: totalFolders > 0 ? (foldersScanned / totalFolders) * 100 : 0,
-      currentMachine: machine,
-      currentDate: dateStr,
-      matchesSoFar: matches.length,
-      foldersScanned,
-      totalFolders,
-    })
-  }
-
-  if (dateFolders.length > 0) {
-    onProgress({
-      phase: 'scanning',
-      percent: 0,
-      currentMachine: dateFolders[0].machine,
-      currentDate: dateFolders[0].dateStr,
-      matchesSoFar: 0,
-      foldersScanned: 0,
-      totalFolders,
-    })
-  }
+  const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
 
   // Phase 2: Scan date folders for Brand-Model / Error-Error subfolders
   await pooled(dateFolders, CONCURRENCY, token, async ({ machine, datePath, dateStr }) => {
@@ -352,8 +342,6 @@ async function searchMRImages(
             if (!file.isFile()) continue
             if (!file.name.toLowerCase().endsWith('.png')) continue
 
-            // MR filenames: SG-{machine}-{code}-{IMEI}-{brand}-{model}.png
-            // IMEI is the 4th hyphen-delimited segment (index 3)
             const imeiFromFile = extractMRImei(file.name)
             if (!imeiFromFile) continue
             if (!imeiSet.has(imeiFromFile)) continue
@@ -386,10 +374,10 @@ async function searchMRImages(
       // Date folder not accessible
     }
 
-    foldersScanned++
+    foldersScanned.value++
   })
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, token, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, token, onProgress)
 }
 
 async function countFiles(folderPath: string): Promise<{ bmp: number; jpeg: number; other: number }> {

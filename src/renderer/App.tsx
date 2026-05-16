@@ -130,6 +130,7 @@ function App(): JSX.Element {
     window.electronAPI.settingsGet('lang').then((saved) => {
       if (saved === 'en' || saved === 'zh') {
         setLang(saved)
+        try { localStorage.setItem('appLang', saved) } catch { /* noop */ }
       }
     })
     window.electronAPI.settingsGet('searchHistory').then((saved) => {
@@ -177,6 +178,7 @@ function App(): JSX.Element {
     const next = lang === 'en' ? 'zh' : 'en'
     setLang(next)
     window.electronAPI.settingsSet('lang', next)
+    try { localStorage.setItem('appLang', next) } catch { /* noop */ }
   }
 
   const handleFoldersChange = useCallback((folders: string[], path: string, sourceName: string): void => {

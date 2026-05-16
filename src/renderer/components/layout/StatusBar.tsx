@@ -1,6 +1,7 @@
 import styles from './StatusBar.module.css'
 
-const APP_VERSION = '1.1.0'
+declare const __APP_VERSION__: string
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
 
 interface StatusBarProps {
   message: string

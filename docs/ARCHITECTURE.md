@@ -346,7 +346,8 @@ image-collection-v2/
 │   │   ├── main.tsx               # React entry point (with ErrorBoundary)
 │   │   ├── App.tsx                # Root component, state management
 │   │   ├── App.module.css
-│   │   ├── styles.css             # CSS variables, global styles, themes
+│   │   ├── styles/
+│   │   │   └── globals.css        # CSS variables, global styles, themes
 │   │   ├── hooks/
 │   │   │   └── useClickOutside.ts # Shared hook for dropdown dismiss
 │   │   └── components/
