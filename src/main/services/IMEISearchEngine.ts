@@ -7,8 +7,9 @@ const SKIP_FOLDERS = new Set([
   '#recycle', '$recycle.bin', 'bin', 'modelrecogimages', 'version_control'
 ])
 
-// Concurrent NAS reads — keeps the SMB pipe saturated
-const CONCURRENCY = 32
+// Concurrent NAS reads — tuned for RS3617RPxs (12-drive RAID 5, 1Gbps)
+// NAS runs at ~50% IOPS capacity during production, plenty of headroom
+const CONCURRENCY = 48
 
 let cancelled = false
 
