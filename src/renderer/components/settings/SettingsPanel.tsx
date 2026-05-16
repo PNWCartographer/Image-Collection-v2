@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import GlassCard from '../layout/GlassCard'
 import Select from '../common/Select'
 import Toggle from '../common/Toggle'
 import Tooltip from '../common/Tooltip'
+import { useClickOutside } from '../../hooks/useClickOutside'
 import styles from './SettingsPanel.module.css'
 
 const TOOLTIPS = {
@@ -37,72 +38,44 @@ const TOOLTIPS = {
   }
 }
 
-const ORGANIZE_OPTIONS = {
-  en: [
-    {
-      value: 'flat',
-      label: 'Flat',
-      desc: 'All IMEI folders in a single destination folder. Example: dest/IMEI_index/'
-    },
-    {
-      value: 'by-machine',
-      label: 'By Machine',
-      desc: 'One level of grouping by source machine. Example: dest/M8/IMEI_index/'
-    },
-    {
-      value: 'by-date',
-      label: 'By Date',
-      desc: 'One level of grouping by scan date. Example: dest/20260515/IMEI_index/'
-    },
-    {
-      value: 'machine-date',
-      label: 'Machine → Date',
-      desc: 'Two-level nesting: machine folder then date. Example: dest/M8/20260515/IMEI_index/'
-    },
-    {
-      value: 'date-machine',
-      label: 'Date → Machine',
-      desc: 'Two-level nesting: date folder then machine. Example: dest/20260515/M8/IMEI_index/'
-    },
-    {
-      value: 'by-imei',
-      label: 'By IMEI',
-      desc: 'Groups all instances of the same device across machines/dates. Example: dest/350002267153742/M8_20260515_192/'
-    }
-  ],
-  zh: [
-    {
-      value: 'flat',
-      label: '平铺',
-      desc: '所有 IMEI 文件夹放在同一个目标文件夹中。示例：dest/IMEI_index/'
-    },
-    {
-      value: 'by-machine',
-      label: '按机器',
-      desc: '按来源机器分组（一级）。示例：dest/M8/IMEI_index/'
-    },
-    {
-      value: 'by-date',
-      label: '按日期',
-      desc: '按扫描日期分组（一级）。示例：dest/20260515/IMEI_index/'
-    },
-    {
-      value: 'machine-date',
-      label: '机器 → 日期',
-      desc: '两级嵌套：先按机器文件夹，再按日期。示例：dest/M8/20260515/IMEI_index/'
-    },
-    {
-      value: 'date-machine',
-      label: '日期 → 机器',
-      desc: '两级嵌套：先按日期文件夹，再按机器。示例：dest/20260515/M8/IMEI_index/'
-    },
-    {
-      value: 'by-imei',
-      label: '按 IMEI',
-      desc: '将同一设备在不同机器/日期的所有记录分组。示例：dest/350002267153742/M8_20260515_192/'
-    }
-  ]
+interface OrganizeOption {
+  value: SettingsState['organize']
+  label: { en: string; zh: string }
+  desc: { en: string; zh: string }
 }
+
+const ORGANIZE_OPTIONS: OrganizeOption[] = [
+  {
+    value: 'flat',
+    label: { en: 'Flat', zh: '平铺' },
+    desc: { en: 'All IMEI folders in a single destination folder. Example: dest/IMEI_index/', zh: '所有 IMEI 文件夹放在同一个目标文件夹中。示例：dest/IMEI_index/' }
+  },
+  {
+    value: 'by-machine',
+    label: { en: 'By Machine', zh: '按机器' },
+    desc: { en: 'One level of grouping by source machine. Example: dest/M8/IMEI_index/', zh: '按来源机器分组（一级）。示例：dest/M8/IMEI_index/' }
+  },
+  {
+    value: 'by-date',
+    label: { en: 'By Date', zh: '按日期' },
+    desc: { en: 'One level of grouping by scan date. Example: dest/20260515/IMEI_index/', zh: '按扫描日期分组（一级）。示例：dest/20260515/IMEI_index/' }
+  },
+  {
+    value: 'machine-date',
+    label: { en: 'Machine → Date', zh: '机器 → 日期' },
+    desc: { en: 'Two-level nesting: machine folder then date. Example: dest/M8/20260515/IMEI_index/', zh: '两级嵌套：先按机器文件夹，再按日期。示例：dest/M8/20260515/IMEI_index/' }
+  },
+  {
+    value: 'date-machine',
+    label: { en: 'Date → Machine', zh: '日期 → 机器' },
+    desc: { en: 'Two-level nesting: date folder then machine. Example: dest/20260515/M8/IMEI_index/', zh: '两级嵌套：先按日期文件夹，再按机器。示例：dest/20260515/M8/IMEI_index/' }
+  },
+  {
+    value: 'by-imei',
+    label: { en: 'By IMEI', zh: '按 IMEI' },
+    desc: { en: 'Groups all instances of the same device across machines/dates. Example: dest/350002267153742/M8_20260515_192/', zh: '将同一设备在不同机器/日期的所有记录分组。示例：dest/350002267153742/M8_20260515_192/' }
+  }
+]
 
 export interface SettingsState {
   action: 'copy' | 'move'
@@ -155,11 +128,11 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
     })
   }, [])
 
-  const handleActionChange = (value: string): void => {
+  const handleActionChange = (value: SettingsState['action']): void => {
     if (value === 'move') {
       setShowMoveWarning(true)
-    } else if (value === 'copy') {
-      setAction('copy')
+    } else {
+      setAction(value)
     }
   }
 
@@ -172,23 +145,15 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
     }
   }, [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination, loaded, onSettingsChange])
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent): void => {
-      if (orgRef.current && !orgRef.current.contains(e.target as Node)) {
-        setOrgOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  const closeOrgDropdown = useCallback(() => setOrgOpen(false), [])
+  useClickOutside(orgRef, closeOrgDropdown)
 
   const handleBrowseDest = async (): Promise<void> => {
     const path = await window.electronAPI.openFolderDialog()
     if (path) setDestination(path)
   }
 
-  const orgOptions = ORGANIZE_OPTIONS[lang]
-  const selectedOrgLabel = orgOptions.find((o) => o.value === organize)?.label ?? (lang === 'en' ? 'Flat' : '平铺')
+  const selectedOrgLabel = ORGANIZE_OPTIONS.find((o) => o.value === organize)?.label[lang] ?? (lang === 'en' ? 'Flat' : '平铺')
 
   return (
     <GlassCard title={lang === 'en' ? 'Settings' : '设置'} delay={0.1} elevated={orgOpen}>
@@ -231,17 +196,17 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
             </button>
             {orgOpen && (
               <div className={styles.orgDropdown}>
-                {orgOptions.map((opt) => (
+                {ORGANIZE_OPTIONS.map((opt) => (
                   <div
                     key={opt.value}
                     className={`${styles.orgOption} ${organize === opt.value ? styles.orgOptionActive : ''}`}
                     onClick={() => {
-                      setOrganize(opt.value as SettingsState['organize'])
+                      setOrganize(opt.value)
                       setOrgOpen(false)
                     }}
                   >
-                    <span className={styles.orgOptionLabel}>{opt.label}</span>
-                    <span className={styles.orgOptionDesc}>{opt.desc}</span>
+                    <span className={styles.orgOptionLabel}>{opt.label[lang]}</span>
+                    <span className={styles.orgOptionDesc}>{opt.desc[lang]}</span>
                   </div>
                 ))}
               </div>

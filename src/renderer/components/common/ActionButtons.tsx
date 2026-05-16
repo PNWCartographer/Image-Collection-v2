@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import type { SearchHistoryEntry } from '../../../shared/types'
 import { formatElapsed } from '../../../shared/utils'
+import { useClickOutside } from '../../hooks/useClickOutside'
 import styles from './ActionButtons.module.css'
 
 interface ActionButtonsProps {
@@ -44,16 +45,8 @@ export default function ActionButtons({
 }: ActionButtonsProps): JSX.Element {
   const [historyOpen, setHistoryOpen] = useState(false)
   const historyRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent): void => {
-      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
-        setHistoryOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  const closeHistory = useCallback(() => setHistoryOpen(false), [])
+  useClickOutside(historyRef, closeHistory)
 
   return (
     <div className={styles.container}>

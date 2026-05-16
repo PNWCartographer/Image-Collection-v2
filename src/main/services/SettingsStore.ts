@@ -18,7 +18,3 @@ export function getSetting(key: string): unknown {
 export function setSetting(key: string, value: unknown): void {
   store.set(key, value)
 }
-
-export function getAllSettings(): Record<string, unknown> {
-  return store.store
-}

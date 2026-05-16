@@ -42,24 +42,9 @@ export class ExportLogger {
 }
 
 /**
- * No-op logger used as fallback when log file creation fails.
- * Export still works, just without logging.
- */
-class NoOpLogger extends ExportLogger {
-  constructor() {
-    super(null, '')
-  }
-
-  info(): void { /* no-op */ }
-  warn(): void { /* no-op */ }
-  error(): void { /* no-op */ }
-
-  async close(): Promise<void> { /* no-op */ }
-}
-
-/**
  * Create a new export logger.
  * Rotates old logs — keeps the 3 most recent, deletes the rest.
+ * Falls back to a no-op logger (null stream) if log creation fails.
  */
 export async function createExportLogger(logsDir: string): Promise<ExportLogger> {
   try {
@@ -92,7 +77,7 @@ export async function createExportLogger(logsDir: string): Promise<ExportLogger>
 
     return new ExportLogger(stream, logPath)
   } catch {
-    // If we can't create the log, return a no-op logger so export still works
-    return new NoOpLogger()
+    // If we can't create the log, return a no-op logger (null stream) so export still works
+    return new ExportLogger(null, '')
   }
 }

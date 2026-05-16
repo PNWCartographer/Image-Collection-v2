@@ -59,7 +59,7 @@ Save frequently used NAS paths as named sources:
 2. Click **[+]** and type a name (e.g. "NAS Lonestar").
 3. Press Enter to save.
 
-Switch between sources with the dropdown. Each source independently remembers its folder toggle states. Click **[-]** to remove a source.
+Switch between sources with the dropdown. Each source independently remembers its folder toggle states. Click **[-]** to remove a source (a confirmation prompt appears since the action cannot be undone).
 
 On first launch, any previously saved single-path setting is automatically migrated into a named source.
 
@@ -68,6 +68,7 @@ On first launch, any previously saved single-path setting is automatically migra
 Restrict searches to date folders within a window:
 
 - **Start / End date** — only folders whose `YYYYMMDD` name falls within this range are scanned. Leave both blank to search all dates.
+- A warning appears if the start date is after the end date (no results will match).
 
 ---
 

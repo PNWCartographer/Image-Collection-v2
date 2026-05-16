@@ -85,19 +85,10 @@ function matchesImageType(fileName: string, imageType: ExportRequest['imageType'
   return true
 }
 
-async function folderExists(path: string): Promise<boolean> {
+async function pathExists(path: string, type: 'file' | 'directory'): Promise<boolean> {
   try {
     const s = await stat(path)
-    return s.isDirectory()
-  } catch {
-    return false
-  }
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    const s = await stat(path)
-    return s.isFile()
+    return type === 'file' ? s.isFile() : s.isDirectory()
   } catch {
     return false
   }
@@ -120,7 +111,7 @@ async function copyFolderParallel(
   destDir: string,
   imageType: ExportRequest['imageType'],
   aiImages: boolean,
-  token: { cancelled: boolean },
+  token: CancelToken,
   logger: ExportLogger
 ): Promise<CopyStats | null> {
   let filesCopied = 0
@@ -284,7 +275,7 @@ export async function exportResults(
       logger.info(`  Dest   : ${destFilePath}`)
 
       try {
-        const exists = await fileExists(destFilePath)
+        const exists = await pathExists(destFilePath, 'file')
 
         if (exists && duplicates === 'skip') {
           skipped++
@@ -326,7 +317,7 @@ export async function exportResults(
       logger.info(`  Dest   : ${destPath}`)
 
       try {
-        const exists = await folderExists(destPath)
+        const exists = await pathExists(destPath, 'directory')
 
         if (exists && duplicates === 'skip') {
           skipped++

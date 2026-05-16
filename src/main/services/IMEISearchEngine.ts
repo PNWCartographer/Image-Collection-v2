@@ -179,7 +179,7 @@ function buildResult(
   foundIMEIs: Set<string>,
   startTime: number,
   foldersScanned: number,
-  token: { cancelled: boolean },
+  token: CancelToken,
   onProgress: (progress: SearchProgress) => void
 ): SearchResult {
   const missingIMEIs = allImeis.filter((imei) => !foundIMEIs.has(imei))
@@ -270,7 +270,7 @@ async function searchMRImages(
 
   await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
     if (token.cancelled) return
-    const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')  // case-insensitive match via SKIP_FOLDERS constant MR_ROOT
+    const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
 
     try {
       const entries = await readdir(mrPath, { withFileTypes: true })

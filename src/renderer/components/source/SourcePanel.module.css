@@ -264,3 +264,10 @@
   outline: none;
 }
 
+.dateWarn {
+  font-size: var(--font-size-xs);
+  color: var(--status-warning, #f5a623);
+  font-weight: var(--font-weight-medium);
+  padding-left: 2px;
+}
+

@@ -5,11 +5,13 @@
 /** Format milliseconds into a human-readable elapsed time string. */
 export function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`
-  const seconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  if (minutes === 0) return `${secs}s`
-  return `${minutes}m ${secs}s`
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const secs = totalSeconds % 60
+  if (hours > 0) return `${hours}h ${minutes}m ${secs}s`
+  if (minutes > 0) return `${minutes}m ${secs}s`
+  return `${secs}s`
 }
 
 /** Format a byte count into a human-readable size string. */

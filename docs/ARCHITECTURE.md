@@ -153,7 +153,7 @@ interface SearchResult {
 // 'cancel-search'       → cancels an in-progress search
 ```
 
-**Concurrency**: Uses a shared `pooled()` worker pool (from `src/shared/pool.ts`) with 48 concurrent NAS reads, tuned for the RS3617RPxs (12-drive RAID 5, 1 Gbps).
+**Concurrency**: Uses shared `pooled()` / `pooledVoid()` worker pools (from `src/shared/pool.ts`) with 48 concurrent NAS reads, tuned for the RS3617RPxs (12-drive RAID 5, 1 Gbps).
 
 **Search algorithm — Standard mode (MR PASS OFF, MR FAIL OFF):**
 1. Phase 1 — Discover date folders (parallel across machines via `pooled()`):
@@ -339,13 +339,16 @@ image-collection-v2/
 │   │       ├── AuditParser.ts
 │   │       ├── IMEISearchEngine.ts
 │   │       ├── ExportEngine.ts
-│   │       └── Logger.ts
+│   │       ├── Logger.ts
+│   │       └── SettingsStore.ts
 │   ├── renderer/                  # React renderer process
 │   │   ├── index.html
 │   │   ├── main.tsx               # React entry point (with ErrorBoundary)
 │   │   ├── App.tsx                # Root component, state management
 │   │   ├── App.module.css
 │   │   ├── styles.css             # CSS variables, global styles, themes
+│   │   ├── hooks/
+│   │   │   └── useClickOutside.ts # Shared hook for dropdown dismiss
 │   │   └── components/
 │   │       ├── layout/
 │   │       │   ├── TitleBar.tsx + .module.css

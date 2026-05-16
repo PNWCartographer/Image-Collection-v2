@@ -118,20 +118,12 @@ export interface SearchHistoryEntry {
   selectedFolders: string[]
   dateStart?: string
   dateEnd?: string
-  scanIndexFilter: string
+  scanIndexFilter: 'all' | 'first_only'
   mrPass: boolean
   mrFail: boolean
   matchCount: number
   missingCount: number
   elapsedMs: number
-}
-
-export interface AppSettings {
-  sources: SourceConfig[]
-  activeSourceId: string
-  lastDestination: string
-  theme: 'dark' | 'light'
-  lang: 'en' | 'zh'
 }
 
 export interface ElectronAPI {

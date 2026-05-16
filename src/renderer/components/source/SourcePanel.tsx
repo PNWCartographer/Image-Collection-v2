@@ -186,6 +186,11 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
   // ── Delete active source ──
   const handleDeleteSource = (): void => {
     if (!activeSourceId || sources.length === 0) return
+    const name = activeSource?.name || ''
+    const msg = lang === 'en'
+      ? `Remove source "${name}"? Its saved folder toggles will be lost.`
+      : `删除数据源"${name}"？其保存的文件夹选择状态将丢失。`
+    if (!window.confirm(msg)) return
     const updated = sources.filter((s) => s.id !== activeSourceId)
     setSources(updated)
     if (updated.length > 0) {
@@ -438,6 +443,11 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
             : '将搜索限制在指定范围内的日期文件夹。留空则搜索所有日期。'}
           />
         </div>
+        {dateStart && dateEnd && dateStart > dateEnd && (
+          <span className={styles.dateWarn}>
+            {lang === 'en' ? 'Start date is after end date — no results will match' : '开始日期在结束日期之后 — 将无匹配结果'}
+          </span>
+        )}
       </div>
     </GlassCard>
   )

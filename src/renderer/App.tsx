@@ -13,6 +13,83 @@ import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, Expor
 import { formatElapsed } from '../shared/utils'
 import styles from './App.module.css'
 
+// ── Pure helpers for status bar and progress display ──
+
+interface StatusInputs {
+  lang: 'en' | 'zh'
+  exporting: boolean
+  exportProgress: ExportProgress | null
+  exportResult: ExportResult | null
+  searching: boolean
+  progress: SearchProgress | null
+  searchResult: SearchResult | null
+  auditResult: AuditParseResult | null
+  selectedFolders: string[]
+}
+
+function buildStatusMessage(s: StatusInputs): string {
+  if (s.exporting && s.exportProgress) {
+    const ep = s.exportProgress
+    return s.lang === 'en'
+      ? `Exporting ${ep.currentIMEI} · ${ep.exported} exported · ${ep.skipped} skipped`
+      : `正在导出 ${ep.currentIMEI} · ${ep.exported} 已导出 · ${ep.skipped} 已跳过`
+  }
+  if (s.exporting) return s.lang === 'en' ? 'Preparing export...' : '正在准备导出...'
+  if (s.exportResult) {
+    return s.lang === 'en'
+      ? `Export complete · ${s.exportResult.exported} exported · ${s.exportResult.skipped} skipped · ${s.exportResult.failed} failed · ${formatElapsed(s.exportResult.elapsedMs)}`
+      : `导出完成 · ${s.exportResult.exported} 已导出 · ${s.exportResult.skipped} 已跳过 · ${s.exportResult.failed} 失败 · ${formatElapsed(s.exportResult.elapsedMs)}`
+  }
+  if (s.searching && s.progress) {
+    return s.lang === 'en'
+      ? `Searching ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} matches`
+      : `正在搜索 ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} 个匹配`
+  }
+  if (s.searching) return s.lang === 'en' ? 'Preparing search...' : '正在准备搜索...'
+  if (s.searchResult) {
+    const unique = new Set(s.searchResult.matches.map((m) => m.imei)).size
+    return s.lang === 'en'
+      ? `Search complete · ${unique.toLocaleString()} IMEIs found · ${s.searchResult.matches.length.toLocaleString()} matches · ${formatElapsed(s.searchResult.elapsedMs)}`
+      : `搜索完成 · 找到 ${unique.toLocaleString()} 个IMEI · ${s.searchResult.matches.length.toLocaleString()} 个匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
+  }
+  if (s.auditResult) {
+    return `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} ${s.lang === 'en' ? 'folders selected' : '个文件夹已选择'}`
+  }
+  return s.lang === 'en' ? 'Ready' : '就绪'
+}
+
+function buildProgressState(
+  lang: 'en' | 'zh',
+  exporting: boolean,
+  exportProgress: ExportProgress | null,
+  progress: SearchProgress | null
+): { percent: number; label: string; sublabel: string | undefined } {
+  if (exporting) {
+    return {
+      percent: exportProgress?.percent ?? 0,
+      label: exportProgress
+        ? (lang === 'en' ? `Exporting ${exportProgress.currentFolder}` : `正在导出 ${exportProgress.currentFolder}`)
+        : (lang === 'en' ? 'Preparing export...' : '准备导出中...'),
+      sublabel: exportProgress
+        ? (lang === 'en'
+            ? `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} items · ${exportProgress.exported} exported`
+            : `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 项 · ${exportProgress.exported} 已导出`)
+        : undefined
+    }
+  }
+  return {
+    percent: progress?.percent ?? 0,
+    label: progress
+      ? (lang === 'en' ? `Scanning ${progress.currentMachine}/${progress.currentDate}` : `正在扫描 ${progress.currentMachine}/${progress.currentDate}`)
+      : (lang === 'en' ? 'Preparing...' : '准备中...'),
+    sublabel: progress
+      ? (lang === 'en'
+          ? `${progress.foldersScanned}/${progress.totalFolders} folders · ${progress.matchesSoFar} matches`
+          : `${progress.foldersScanned}/${progress.totalFolders} 个文件夹 · ${progress.matchesSoFar} 个匹配`)
+      : undefined
+  }
+}
+
 function App(): JSX.Element {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [lang, setLang] = useState<'en' | 'zh'>('en')
@@ -32,7 +109,7 @@ function App(): JSX.Element {
   const sourceNameRef = useRef('')
 
   const settingsRef = useRef<SettingsState>({
-    action: 'copy', imageType: 'both', organize: 'flat' as const,
+    action: 'copy', imageType: 'both', organize: 'flat',
     duplicates: 'skip', scanIndex: 'all',
     mrPass: false, mrFail: false, aiImages: false, destination: ''
   })
@@ -57,7 +134,11 @@ function App(): JSX.Element {
     })
     window.electronAPI.settingsGet('searchHistory').then((saved) => {
       if (Array.isArray(saved)) {
-        setSearchHistory(saved as SearchHistoryEntry[])
+        const valid = saved.filter(
+          (e): e is SearchHistoryEntry =>
+            e != null && typeof e === 'object' && typeof e.id === 'string' && typeof e.timestamp === 'number'
+        )
+        setSearchHistory(valid)
       }
     })
   }, [])
@@ -233,69 +314,18 @@ function App(): JSX.Element {
         }
       : null
 
-  let statusMsg: string
-  if (exporting && exportProgress) {
-    const ep = exportProgress
-    statusMsg = lang === 'en'
-      ? `Exporting ${ep.currentIMEI} · ${ep.exported} exported · ${ep.skipped} skipped`
-      : `正在导出 ${ep.currentIMEI} · ${ep.exported} 已导出 · ${ep.skipped} 已跳过`
-  } else if (exporting) {
-    statusMsg = lang === 'en' ? 'Preparing export...' : '正在准备导出...'
-  } else if (exportResult) {
-    statusMsg = lang === 'en'
-      ? `Export complete · ${exportResult.exported} exported · ${exportResult.skipped} skipped · ${exportResult.failed} failed · ${formatElapsed(exportResult.elapsedMs)}`
-      : `导出完成 · ${exportResult.exported} 已导出 · ${exportResult.skipped} 已跳过 · ${exportResult.failed} 失败 · ${formatElapsed(exportResult.elapsedMs)}`
-  } else if (searching && progress) {
-    statusMsg = lang === 'en'
-      ? `Searching ${progress.currentMachine}/${progress.currentDate} · ${progress.matchesSoFar} matches`
-      : `正在搜索 ${progress.currentMachine}/${progress.currentDate} · ${progress.matchesSoFar} 个匹配`
-  } else if (searching) {
-    statusMsg = lang === 'en' ? 'Preparing search...' : '正在准备搜索...'
-  } else if (searchResult) {
-    const unique = new Set(searchResult.matches.map((m) => m.imei)).size
-    statusMsg = lang === 'en'
-      ? `Search complete · ${unique.toLocaleString()} IMEIs found · ${searchResult.matches.length.toLocaleString()} matches · ${formatElapsed(searchResult.elapsedMs)}`
-      : `搜索完成 · 找到 ${unique.toLocaleString()} 个IMEI · ${searchResult.matches.length.toLocaleString()} 个匹配 · ${formatElapsed(searchResult.elapsedMs)}`
-  } else if (auditResult) {
-    statusMsg = `${auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${selectedFolders.length} ${lang === 'en' ? 'folders selected' : '个文件夹已选择'}`
-  } else {
-    statusMsg = lang === 'en' ? 'Ready' : '就绪'
-  }
+  const statusMsg = buildStatusMessage({
+    lang, exporting, exportProgress, exportResult, searching, progress,
+    searchResult, auditResult, selectedFolders
+  })
 
   const progressVisible = searching || exporting
-  let progressPercent: number
-  let progressLabel: string
-  let progressSublabel: string | undefined
-
-  if (exporting) {
-    progressPercent = exportProgress?.percent ?? 0
-    progressLabel = exportProgress
-      ? (lang === 'en'
-          ? `Exporting ${exportProgress.currentFolder}`
-          : `正在导出 ${exportProgress.currentFolder}`)
-      : (lang === 'en' ? 'Preparing export...' : '准备导出中...')
-    progressSublabel = exportProgress
-      ? (lang === 'en'
-          ? `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} items · ${exportProgress.exported} exported`
-          : `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 项 · ${exportProgress.exported} 已导出`)
-      : undefined
-  } else {
-    progressPercent = progress?.percent ?? 0
-    progressLabel = progress
-      ? (lang === 'en'
-          ? `Scanning ${progress.currentMachine}/${progress.currentDate}`
-          : `正在扫描 ${progress.currentMachine}/${progress.currentDate}`)
-      : (lang === 'en' ? 'Preparing...' : '准备中...')
-    progressSublabel = progress
-      ? (lang === 'en'
-          ? `${progress.foldersScanned}/${progress.totalFolders} folders · ${progress.matchesSoFar} matches`
-          : `${progress.foldersScanned}/${progress.totalFolders} 个文件夹 · ${progress.matchesSoFar} 个匹配`)
-      : undefined
-  }
+  const { percent: progressPercent, label: progressLabel, sublabel: progressSublabel } =
+    buildProgressState(lang, exporting, exportProgress, progress)
 
   return (
     <div className={styles.app}>
-      <TitleBar theme={theme} onToggleTheme={toggleTheme} />
+      <TitleBar theme={theme} lang={lang} onToggleTheme={toggleTheme} />
 
       <div className={styles.content}>
         <div className={styles.panels}>
