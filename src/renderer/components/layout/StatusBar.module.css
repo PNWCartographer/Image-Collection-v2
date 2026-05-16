@@ -2,6 +2,7 @@
   height: 28px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 16px;
   background: rgba(0, 0, 0, 0.1);
   border-top: 1px solid var(--border-glass);
@@ -11,4 +12,20 @@
 .text {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+}
+
+.logLink {
+  background: none;
+  border: none;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family);
+  color: var(--accent-primary);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.logLink:hover {
+  background: rgba(10, 186, 181, 0.12);
 }

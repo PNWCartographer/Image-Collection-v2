@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { join } from 'path'
 import { scanRootFolder } from './services/FolderScanner'
 import { parseAuditFile } from './services/AuditParser'
@@ -90,9 +90,12 @@ function registerIPC(): void {
     cancelSearch()
   })
 
+  const logsDir = join(app.getPath('userData'), 'logs')
+
   ipcMain.handle('export:start', async (_event, request: ExportRequest) => {
     return exportResults(
       request,
+      logsDir,
       (progress) => {
         mainWindow?.webContents.send('export:progress', progress)
       }
@@ -101,6 +104,10 @@ function registerIPC(): void {
 
   ipcMain.on('export:cancel', () => {
     cancelExport()
+  })
+
+  ipcMain.on('logs:open-folder', () => {
+    shell.openPath(logsDir)
   })
 
   ipcMain.handle('settings:get', (_event, key: string) => {

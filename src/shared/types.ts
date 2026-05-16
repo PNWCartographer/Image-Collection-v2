@@ -94,6 +94,7 @@ export interface ExportResult {
   failedItems: { imei: string; sourcePath: string; error: string }[]
   elapsedMs: number
   destinationPath: string
+  logPath: string
 }
 
 export interface AppSettings {
@@ -121,6 +122,7 @@ export interface ElectronAPI {
   exportResults: (request: ExportRequest) => Promise<ExportResult>
   cancelExport: () => void
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
+  openLogsFolder: () => void
   ping: () => Promise<string>
   settingsGet: (key: string) => Promise<unknown>
   settingsSet: (key: string, value: unknown) => Promise<void>

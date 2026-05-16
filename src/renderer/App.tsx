@@ -301,7 +301,12 @@ function App(): JSX.Element {
         </div>
       </div>
 
-      <StatusBar message={statusMsg} />
+      <StatusBar
+        message={statusMsg}
+        showLogLink={exportResult !== null}
+        onOpenLogs={() => window.electronAPI.openLogsFolder()}
+        lang={lang}
+      />
     </div>
   )
 }
