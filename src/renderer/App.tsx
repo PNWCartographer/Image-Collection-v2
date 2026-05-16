@@ -10,7 +10,7 @@ import ResultsPanel from './components/results/ResultsPanel'
 import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
 import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest, SearchHistoryEntry } from '../shared/types'
-import { formatElapsed } from '../shared/utils'
+import { formatElapsed, generateId } from '../shared/utils'
 import styles from './App.module.css'
 
 // ── Pure helpers for status bar and progress display ──
@@ -227,7 +227,7 @@ function App(): JSX.Element {
 
       // Save to search history (keep last 5)
       const entry: SearchHistoryEntry = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        id: generateId(),
         timestamp: Date.now(),
         auditFileName: auditResult.fileName,
         imeiCount: auditResult.validIMEIs.length,
@@ -293,6 +293,9 @@ function App(): JSX.Element {
   }
 
   const handleClear = (): void => {
+    // Cancel any active operations so IPC listeners don't re-populate cleared state
+    if (searching) window.electronAPI.cancelSearch()
+    if (exporting) window.electronAPI.cancelExport()
     setAuditResult(null)
     setSearchResult(null)
     setStreamingMatches([])

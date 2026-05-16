@@ -2,7 +2,7 @@ import { readdir, copyFile, mkdir, rm, stat, access } from 'fs/promises'
 import { join, extname, dirname } from 'path'
 import { constants as fsConstants } from 'fs'
 import type { ExportRequest, ExportProgress, ExportResult, SearchMatch } from '../../shared/types'
-import { formatElapsed, formatBytes } from '../../shared/utils'
+import { formatElapsed, formatBytes, PROGRESS_THROTTLE_MS } from '../../shared/utils'
 import { pooledVoid, type CancelToken } from '../../shared/pool'
 import { createExportLogger, type ExportLogger } from './Logger'
 
@@ -78,7 +78,9 @@ function matchesImageType(fileName: string, imageType: ExportRequest['imageType'
   const ext = extname(fileName).toLowerCase()
   if (imageType === 'bmp') return ext === '.bmp'
   if (imageType === 'jpeg') return ext === '.jpg' || ext === '.jpeg'
-  return true
+  // Exhaustive check — compile error if a new imageType is added without handling
+  const _exhaustive: never = imageType
+  return _exhaustive
 }
 
 async function pathExists(path: string, type: 'file' | 'directory'): Promise<boolean> {
@@ -234,7 +236,7 @@ export async function exportResults(
   let lastProgressTime = 0
   const sendProgress = (currentMatch: SearchMatch): void => {
     const now = Date.now()
-    if (now - lastProgressTime < 100) return
+    if (now - lastProgressTime < PROGRESS_THROTTLE_MS) return
     lastProgressTime = now
 
     onProgress({

@@ -1,6 +1,7 @@
 import { readdir } from 'fs/promises'
 import { join } from 'path'
 import type { SearchRequest, SearchMatch, SearchProgress, SearchResult } from '../../shared/types'
+import { PROGRESS_THROTTLE_MS } from '../../shared/utils'
 import { pooled, type CancelToken } from '../../shared/pool'
 
 const DATE_REGEX = /^\d{8}$/
@@ -54,7 +55,7 @@ function createProgressTracker(
 
   const sendProgress = (machine: string, dateStr: string): void => {
     const now = Date.now()
-    if (now - lastProgressTime < 150) return
+    if (now - lastProgressTime < PROGRESS_THROTTLE_MS) return
     lastProgressTime = now
     onProgress({
       phase: 'scanning',

@@ -24,9 +24,9 @@ function formatTimestamp(ts: number, lang: 'en' | 'zh'): string {
   const day = d.getDate()
   const h = d.getHours()
   const m = String(d.getMinutes()).padStart(2, '0')
+  if (lang === 'zh') return `${month}/${day} ${h}:${m}`
   const ampm = h >= 12 ? 'PM' : 'AM'
   const h12 = h % 12 || 12
-  if (lang === 'zh') return `${month}/${day} ${h12}:${m}${ampm}`
   return `${month}/${day} ${h12}:${m} ${ampm}`
 }
 

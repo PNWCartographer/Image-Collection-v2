@@ -89,7 +89,7 @@ export interface SettingsState {
   destination: string
 }
 
-const VALID_ORGANIZE_VALUES = new Set(ORGANIZE_OPTIONS.map((o) => o.value))
+const VALID_ORGANIZE_VALUES = ORGANIZE_OPTIONS.map((o) => o.value) as readonly SettingsState['organize'][]
 
 function isOneOf<T extends string>(value: unknown, valid: readonly T[]): value is T {
   return typeof value === 'string' && (valid as readonly string[]).includes(value)
@@ -122,7 +122,7 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
         const s = saved as Record<string, unknown>
         if (s.action === 'copy') setAction('copy') // Never restore 'move' for safety
         if (isOneOf(s.imageType, ['both', 'bmp', 'jpeg'] as const)) setImageType(s.imageType)
-        if (typeof s.organize === 'string' && VALID_ORGANIZE_VALUES.has(s.organize as SettingsState['organize'])) setOrganize(s.organize as SettingsState['organize'])
+        if (isOneOf(s.organize, VALID_ORGANIZE_VALUES)) setOrganize(s.organize)
         if (isOneOf(s.duplicates, ['skip', 'overwrite'] as const)) setDuplicates(s.duplicates)
         if (isOneOf(s.scanIndex, ['all', 'first_only'] as const)) setScanIndex(s.scanIndex)
         if (typeof s.mrPass === 'boolean') setMrPass(s.mrPass)

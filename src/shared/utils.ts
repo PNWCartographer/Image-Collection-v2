@@ -2,6 +2,14 @@
  * Shared utility functions used across main and renderer processes.
  */
 
+/** IPC progress throttle — max one event per this many ms. */
+export const PROGRESS_THROTTLE_MS = 120
+
+/** Generate a short random ID suitable for local-only identifiers. */
+export function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
 /** Format milliseconds into a human-readable elapsed time string. */
 export function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`

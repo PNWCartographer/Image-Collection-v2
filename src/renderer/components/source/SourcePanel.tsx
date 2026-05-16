@@ -2,11 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import GlassCard from '../layout/GlassCard'
 import Tooltip from '../common/Tooltip'
 import type { FolderInfo, SourceConfig } from '../../../shared/types'
+import { generateId } from '../../../shared/utils'
 import styles from './SourcePanel.module.css'
-
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
-}
 
 function inferSourceName(path: string): string {
   const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/)
@@ -181,6 +178,17 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
   const handleSaveNewSource = (): void => {
     const name = newSourceName.trim()
     if (!name || !folderPath) return
+
+    // Prevent duplicate paths
+    const normalizedPath = folderPath.replace(/[\\/]+$/, '').toLowerCase()
+    const duplicate = sources.find((s) => s.rootPath.replace(/[\\/]+$/, '').toLowerCase() === normalizedPath)
+    if (duplicate) {
+      const msg = lang === 'en'
+        ? `A source already exists for this path ("${duplicate.name}"). Add anyway?`
+        : `此路径已有数据源（"${duplicate.name}"）。仍要添加吗？`
+      if (!window.confirm(msg)) return
+    }
+
     const newSource: SourceConfig = {
       id: generateId(),
       name,
@@ -228,7 +236,22 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
     const path = await window.electronAPI.openFolderDialog()
     if (path) {
       setFolderPath(path)
-      if (activeSourceId) persistSourcePath(path)
+      if (activeSourceId) {
+        persistSourcePath(path)
+      } else {
+        // First-time use: auto-create a default source so path persists across sessions
+        const newSource: SourceConfig = {
+          id: generateId(),
+          name: inferSourceName(path),
+          rootPath: path,
+          folderToggles: {}
+        }
+        const updated = [...sources, newSource]
+        setSources(updated)
+        setActiveSourceId(newSource.id)
+        window.electronAPI.settingsSet('sources', updated)
+        window.electronAPI.settingsSet('activeSourceId', newSource.id)
+      }
       scanFolder(path)
     }
   }
