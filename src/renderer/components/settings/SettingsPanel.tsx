@@ -133,7 +133,27 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
   const [aiImages, setAiImages] = useState(false)
   const [destination, setDestination] = useState('')
   const [showMoveWarning, setShowMoveWarning] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const orgRef = useRef<HTMLDivElement>(null)
+
+  // Load saved settings on mount
+  useEffect(() => {
+    window.electronAPI.settingsGet('settingsPanel').then((saved) => {
+      if (saved && typeof saved === 'object') {
+        const s = saved as Partial<SettingsState>
+        if (s.action && s.action !== 'move') setAction(s.action)
+        if (s.imageType) setImageType(s.imageType)
+        if (s.organize) setOrganize(s.organize)
+        if (s.duplicates) setDuplicates(s.duplicates)
+        if (s.scanIndex) setScanIndex(s.scanIndex)
+        if (typeof s.mrPass === 'boolean') setMrPass(s.mrPass)
+        if (typeof s.mrFail === 'boolean') setMrFail(s.mrFail)
+        if (typeof s.aiImages === 'boolean') setAiImages(s.aiImages)
+        if (s.destination) setDestination(s.destination)
+      }
+      setLoaded(true)
+    })
+  }, [])
 
   const handleActionChange = (value: string): void => {
     if (value === 'move') {
@@ -143,9 +163,14 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
     }
   }
 
+  // Notify parent and persist on every change (skip until initial load completes)
   useEffect(() => {
-    onSettingsChange?.({ action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination })
-  }, [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination])
+    const settings = { action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination }
+    onSettingsChange?.(settings)
+    if (loaded) {
+      window.electronAPI.settingsSet('settingsPanel', settings)
+    }
+  }, [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination, loaded])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent): void => {
