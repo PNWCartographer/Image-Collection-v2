@@ -68,6 +68,8 @@
   --bg-titlebar: rgba(0, 0, 0, 0.15);
   --bg-statusbar: rgba(0, 0, 0, 0.1);
   --bg-overlay: rgba(0, 0, 0, 0.6);
+  --bg-dropdown: #1e2333;
+  --border-dropdown: rgba(255, 255, 255, 0.15);
   --border-separator: rgba(255, 255, 255, 0.06);
   --bg-dropdown-hover: rgba(255, 255, 255, 0.08);
   --bg-dropdown-active: rgba(10, 186, 181, 0.12);
@@ -106,6 +108,8 @@
   --bg-titlebar: rgba(255, 255, 255, 0.4);
   --bg-statusbar: rgba(255, 255, 255, 0.35);
   --bg-overlay: rgba(0, 0, 0, 0.4);
+  --bg-dropdown: #ffffff;
+  --border-dropdown: rgba(0, 0, 0, 0.12);
   --border-separator: rgba(0, 0, 0, 0.06);
   --bg-dropdown-hover: rgba(0, 0, 0, 0.05);
   --bg-dropdown-active: rgba(10, 186, 181, 0.10);

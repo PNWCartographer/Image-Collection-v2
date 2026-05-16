@@ -75,8 +75,8 @@
   top: calc(100% + 4px);
   left: 0;
   width: 360px;
-  background: var(--bg-tooltip);
-  border: 1px solid var(--border-tooltip);
+  background: var(--bg-dropdown);
+  border: 1px solid var(--border-dropdown);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-elevated);
   z-index: 200;
