@@ -62,6 +62,18 @@
   --bg-tooltip: #1e2333;
   --border-tooltip: rgba(255, 255, 255, 0.15);
   --text-tooltip: #ffffff;
+
+  --bg-option: #1a1e2e;
+  --text-option: #e0e6ed;
+  --bg-titlebar: rgba(0, 0, 0, 0.15);
+  --bg-statusbar: rgba(0, 0, 0, 0.1);
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+  --border-separator: rgba(255, 255, 255, 0.06);
+  --bg-dropdown-hover: rgba(255, 255, 255, 0.08);
+  --bg-dropdown-active: rgba(10, 186, 181, 0.12);
+  --bg-dropdown-active-hover: rgba(10, 186, 181, 0.18);
+  --text-dropdown: #ffffff;
+  --text-dropdown-desc: rgba(255, 255, 255, 0.5);
 }
 
 /* ─── Light Theme ─── */
@@ -88,6 +100,18 @@
   --bg-tooltip: #2c2f3e;
   --border-tooltip: rgba(0, 0, 0, 0.2);
   --text-tooltip: #ffffff;
+
+  --bg-option: #f5f5f5;
+  --text-option: #1a1a1a;
+  --bg-titlebar: rgba(255, 255, 255, 0.4);
+  --bg-statusbar: rgba(255, 255, 255, 0.35);
+  --bg-overlay: rgba(0, 0, 0, 0.4);
+  --border-separator: rgba(0, 0, 0, 0.06);
+  --bg-dropdown-hover: rgba(0, 0, 0, 0.05);
+  --bg-dropdown-active: rgba(10, 186, 181, 0.10);
+  --bg-dropdown-active-hover: rgba(10, 186, 181, 0.16);
+  --text-dropdown: rgba(0, 0, 0, 0.88);
+  --text-dropdown-desc: rgba(0, 0, 0, 0.45);
 }
 
 /* ─── Base ─── */

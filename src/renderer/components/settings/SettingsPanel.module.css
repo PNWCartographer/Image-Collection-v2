@@ -94,7 +94,7 @@
   padding: 10px 14px;
   cursor: pointer;
   transition: background var(--transition-fast);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-separator);
 }
 
 .orgOption:last-child {
@@ -102,29 +102,29 @@
 }
 
 .orgOption:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-dropdown-hover);
 }
 
 .orgOptionActive {
-  background: rgba(10, 186, 181, 0.12);
+  background: var(--bg-dropdown-active);
 }
 
 .orgOptionActive:hover {
-  background: rgba(10, 186, 181, 0.18);
+  background: var(--bg-dropdown-active-hover);
 }
 
 .orgOptionLabel {
   display: block;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: #fff;
+  color: var(--text-dropdown);
   margin-bottom: 2px;
 }
 
 .orgOptionDesc {
   display: block;
   font-size: var(--font-size-xs);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-dropdown-desc);
   line-height: 1.4;
 }
 
@@ -183,7 +183,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;

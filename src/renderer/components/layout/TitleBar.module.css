@@ -5,7 +5,7 @@
   justify-content: space-between;
   padding: 0 8px 0 16px;
   -webkit-app-region: drag;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--bg-titlebar);
   border-bottom: 1px solid var(--border-glass);
   flex-shrink: 0;
 }

@@ -207,8 +207,8 @@
 }
 
 .timeSelect option {
-  background: #1a1e2e;
-  color: #e0e6ed;
+  background: var(--bg-option);
+  color: var(--text-option);
 }
 
 .timeSep {
