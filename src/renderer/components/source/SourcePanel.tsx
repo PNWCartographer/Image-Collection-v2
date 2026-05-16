@@ -264,7 +264,22 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
 
   const handlePathSubmit = (e: React.KeyboardEvent): void => {
     if (e.key === 'Enter' && folderPath) {
-      if (activeSourceId) persistSourcePath(folderPath)
+      if (activeSourceId) {
+        persistSourcePath(folderPath)
+      } else {
+        // First-time use: auto-create a default source so path persists across sessions
+        const newSource: SourceConfig = {
+          id: generateId(),
+          name: inferSourceName(folderPath),
+          rootPath: folderPath,
+          folderToggles: {}
+        }
+        const updated = [...sources, newSource]
+        setSources(updated)
+        setActiveSourceId(newSource.id)
+        window.electronAPI.settingsSet('sources', updated)
+        window.electronAPI.settingsSet('activeSourceId', newSource.id)
+      }
       scanFolder(folderPath)
     }
   }

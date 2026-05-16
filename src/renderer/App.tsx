@@ -107,6 +107,7 @@ function App(): JSX.Element {
   const [hasDestination, setHasDestination] = useState(false)
 
   const sourceNameRef = useRef('')
+  const abortedRef = useRef(false)
 
   const settingsRef = useRef<SettingsState>({
     action: 'copy', imageType: 'both', organize: 'flat',
@@ -203,6 +204,7 @@ function App(): JSX.Element {
   const handleSearch = async (): Promise<void> => {
     if (!auditResult || selectedFolders.length === 0) return
 
+    abortedRef.current = false
     setSearching(true)
     setSearchResult(null)
     setStreamingMatches([])
@@ -222,6 +224,10 @@ function App(): JSX.Element {
         mrPass: settings.mrPass || undefined,
         mrFail: settings.mrFail || undefined
       })
+
+      // Discard result if Clear was pressed while awaiting
+      if (abortedRef.current) return
+
       setSearchResult(result)
       setStreamingMatches([]) // Clear streaming state — final result replaces it
 
@@ -265,6 +271,7 @@ function App(): JSX.Element {
     const settings = settingsRef.current
     if (!settings.destination) return
 
+    abortedRef.current = false
     setExporting(true)
     setExportResult(null)
     setExportProgress(null)
@@ -280,6 +287,10 @@ function App(): JSX.Element {
         aiImages: settings.aiImages
       }
       const result = await window.electronAPI.exportResults(request)
+
+      // Discard result if Clear was pressed while awaiting
+      if (abortedRef.current) return
+
       setExportResult(result)
     } catch (err) {
       console.error('Export failed:', err)
@@ -293,7 +304,8 @@ function App(): JSX.Element {
   }
 
   const handleClear = (): void => {
-    // Cancel any active operations so IPC listeners don't re-populate cleared state
+    // Signal active operations to discard their results when they resolve
+    abortedRef.current = true
     if (searching) window.electronAPI.cancelSearch()
     if (exporting) window.electronAPI.cancelExport()
     setAuditResult(null)
