@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { join } from 'path'
+import { writeFile } from 'fs/promises'
 import { scanRootFolder } from './services/FolderScanner'
 import { parseAuditFile } from './services/AuditParser'
 import { searchIMEIs, cancelSearch } from './services/IMEISearchEngine'
@@ -104,6 +105,17 @@ function registerIPC(): void {
 
   ipcMain.on('export:cancel', () => {
     cancelExport()
+  })
+
+  ipcMain.handle('dialog:save-file', async (_event, defaultName: string, filters: { name: string; extensions: string[] }[], content: string) => {
+    if (!mainWindow) return false
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName,
+      filters
+    })
+    if (result.canceled || !result.filePath) return false
+    await writeFile(result.filePath, content, 'utf-8')
+    return true
   })
 
   ipcMain.on('logs:open-folder', () => {

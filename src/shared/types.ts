@@ -122,6 +122,7 @@ export interface ElectronAPI {
   exportResults: (request: ExportRequest) => Promise<ExportResult>
   cancelExport: () => void
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
+  saveFile: (defaultName: string, filters: { name: string; extensions: string[] }[], content: string) => Promise<boolean>
   openLogsFolder: () => void
   ping: () => Promise<string>
   settingsGet: (key: string) => Promise<unknown>

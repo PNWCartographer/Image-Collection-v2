@@ -182,6 +182,24 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
             : (lang === 'en' ? `View Missing IMEIs (${result?.missingIMEIs.length ?? 0})` : `查看缺失的IMEI (${result?.missingIMEIs.length ?? 0})`)
           }
         </button>
+        <button
+          className={styles.textBtn}
+          disabled={!result || result.missingIMEIs.length === 0}
+          onClick={async () => {
+            if (!result) return
+            const content = result.missingIMEIs.join('\n')
+            await window.electronAPI.saveFile(
+              'missing-imeis.txt',
+              [
+                { name: 'Text Files', extensions: ['txt'] },
+                { name: 'CSV Files', extensions: ['csv'] }
+              ],
+              content
+            )
+          }}
+        >
+          {lang === 'en' ? 'Save Missing IMEIs' : '保存缺失的IMEI'}
+        </button>
       </div>
     </GlassCard>
   )

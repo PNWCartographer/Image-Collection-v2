@@ -31,6 +31,7 @@ const api: ElectronAPI = {
     ipcRenderer.on('export:progress', handler)
     return () => ipcRenderer.removeListener('export:progress', handler)
   },
+  saveFile: (defaultName, filters, content) => ipcRenderer.invoke('dialog:save-file', defaultName, filters, content),
   openLogsFolder: () => ipcRenderer.send('logs:open-folder'),
   ping: () => ipcRenderer.invoke('ping'),
   settingsGet: (key) => ipcRenderer.invoke('settings:get', key),
