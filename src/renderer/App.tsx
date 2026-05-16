@@ -148,6 +148,7 @@ function App(): JSX.Element {
   // Subscribe to search progress events
   useEffect(() => {
     const unsubscribe = window.electronAPI.onSearchProgress((prog) => {
+      if (abortedRef.current) return
       setProgress(prog)
     })
     return unsubscribe
@@ -156,6 +157,7 @@ function App(): JSX.Element {
   // Subscribe to streaming match events
   useEffect(() => {
     const unsubscribe = window.electronAPI.onSearchMatches((matches) => {
+      if (abortedRef.current) return
       setStreamingMatches((prev) => [...prev, ...matches])
     })
     return unsubscribe
@@ -164,6 +166,7 @@ function App(): JSX.Element {
   // Subscribe to export progress events
   useEffect(() => {
     const unsubscribe = window.electronAPI.onExportProgress((prog) => {
+      if (abortedRef.current) return
       setExportProgress(prog)
     })
     return unsubscribe
