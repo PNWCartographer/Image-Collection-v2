@@ -1,3 +1,84 @@
+/* ─── Source Selector ─── */
+.sourceRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sourceSelect {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.sourceSelect:focus {
+  border-color: var(--border-glass-focus);
+  outline: none;
+}
+
+.sourceSelect option {
+  background: var(--bg-option);
+  color: var(--text-option);
+}
+
+.sourceBtn {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast);
+}
+
+.sourceBtn:hover:not(:disabled) {
+  background: var(--bg-glass-hover);
+}
+
+.sourceBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.sourceNameWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.sourceNameInput {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-glass-focus);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.sourceNameInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* ─── Path Row ─── */
 .topRow {
   display: flex;
   gap: 12px;

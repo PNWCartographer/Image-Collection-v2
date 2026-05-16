@@ -9,7 +9,7 @@ import type { SettingsState } from './components/settings/SettingsPanel'
 import ResultsPanel from './components/results/ResultsPanel'
 import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
-import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest } from '../shared/types'
+import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest, SearchHistoryEntry } from '../shared/types'
 import styles from './App.module.css'
 
 function App(): JSX.Element {
@@ -25,6 +25,9 @@ function App(): JSX.Element {
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null)
   const [exportResult, setExportResult] = useState<ExportResult | null>(null)
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>([])
+
+  const sourceNameRef = useRef('')
 
   const settingsRef = useRef<SettingsState>({
     action: 'copy', imageType: 'both', organize: 'flat',
@@ -48,6 +51,11 @@ function App(): JSX.Element {
     window.electronAPI.settingsGet('lang').then((saved) => {
       if (saved === 'en' || saved === 'zh') {
         setLang(saved)
+      }
+    })
+    window.electronAPI.settingsGet('searchHistory').then((saved) => {
+      if (Array.isArray(saved)) {
+        setSearchHistory(saved as SearchHistoryEntry[])
       }
     })
   }, [])
@@ -88,9 +96,10 @@ function App(): JSX.Element {
     window.electronAPI.settingsSet('lang', next)
   }
 
-  const handleFoldersChange = (folders: string[], path: string): void => {
+  const handleFoldersChange = (folders: string[], path: string, sourceName: string): void => {
     setSelectedFolders(folders)
     setRootPath(path)
+    sourceNameRef.current = sourceName
   }
 
   const handleAuditLoaded = (result: AuditParseResult | null): void => {
@@ -131,6 +140,28 @@ function App(): JSX.Element {
       })
       setSearchResult(result)
       setStreamingMatches([]) // Clear streaming state — final result replaces it
+
+      // Save to search history (keep last 5)
+      const entry: SearchHistoryEntry = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        timestamp: Date.now(),
+        auditFileName: auditResult.fileName,
+        imeiCount: auditResult.validIMEIs.length,
+        rootPath,
+        sourceName: sourceNameRef.current,
+        selectedFolders: [...selectedFolders],
+        dateStart: dr.dateStart || undefined,
+        dateEnd: dr.dateEnd || undefined,
+        scanIndexFilter: settings.scanIndex,
+        mrPass: settings.mrPass,
+        mrFail: settings.mrFail,
+        matchCount: result.matches.length,
+        missingCount: result.missingIMEIs.length,
+        elapsedMs: result.elapsedMs
+      }
+      const updated = [entry, ...searchHistory].slice(0, 5)
+      setSearchHistory(updated)
+      window.electronAPI.settingsSet('searchHistory', updated)
     } catch (err) {
       console.error('Search failed:', err)
     } finally {
@@ -298,6 +329,7 @@ function App(): JSX.Element {
             canExport={searchResult !== null && searchResult.matches.length > 0 && !exporting && !!settingsRef.current.destination}
             searching={searching}
             exporting={exporting}
+            searchHistory={searchHistory}
             lang={lang}
           />
         </div>

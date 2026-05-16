@@ -103,13 +103,33 @@ export interface ExportResult {
   logPath: string
 }
 
+export interface SourceConfig {
+  id: string
+  name: string
+  rootPath: string
+  folderToggles: Record<string, boolean>
+}
+
+export interface SearchHistoryEntry {
+  id: string
+  timestamp: number
+  auditFileName: string
+  imeiCount: number
+  rootPath: string
+  sourceName: string
+  selectedFolders: string[]
+  dateStart?: string
+  dateEnd?: string
+  scanIndexFilter: string
+  mrPass: boolean
+  mrFail: boolean
+  matchCount: number
+  missingCount: number
+  elapsedMs: number
+}
+
 export interface AppSettings {
-  sources: {
-    id: string
-    name: string
-    rootPath: string
-    folderToggles: Record<string, boolean>
-  }[]
+  sources: SourceConfig[]
   activeSourceId: string
   lastDestination: string
   theme: 'dark' | 'light'
