@@ -151,20 +151,31 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
                   </td>
                 </tr>
               ) : (
-                sortedMatches.map((match, idx) => (
-                  <tr key={`${match.imei}-${match.machineName}-${match.date}-${match.scanIndex}`} className={styles.tr}>
-                    <td className={styles.td}>{match.imei}</td>
-                    <td className={styles.td}>{match.machineName}</td>
-                    <td className={styles.td}>{match.date}</td>
-                    <td className={styles.td}>{match.scanIndex}</td>
-                    <td className={styles.td}>
-                      {match.totalFiles}
-                      <span className={styles.fileBreakdown}>
-                        ({match.bmpCount}b {match.jpegCount}j)
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                sortedMatches.map((match) => {
+                  const isMR = match.matchType === 'mr-pass' || match.matchType === 'mr-fail'
+                  return (
+                    <tr key={`${match.imei}-${match.machineName}-${match.date}-${match.scanIndex}-${match.matchType || 'std'}`} className={styles.tr}>
+                      <td className={styles.td}>{match.imei}</td>
+                      <td className={styles.td}>{match.machineName}</td>
+                      <td className={styles.td}>{match.date}</td>
+                      {isMR ? (
+                        <td className={`${styles.td} ${match.matchType === 'mr-pass' ? styles.mrPass : styles.mrFail}`}>
+                          {match.mrFolder}
+                        </td>
+                      ) : (
+                        <td className={styles.td}>{match.scanIndex}</td>
+                      )}
+                      <td className={styles.td}>
+                        {match.totalFiles}
+                        {!isMR && (
+                          <span className={styles.fileBreakdown}>
+                            ({match.bmpCount}b {match.jpegCount}j)
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

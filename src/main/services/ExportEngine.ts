@@ -1,5 +1,5 @@
 import { readdir, copyFile, mkdir, rm, stat } from 'fs/promises'
-import { join, extname } from 'path'
+import { join, extname, dirname } from 'path'
 import type { ExportRequest, ExportProgress, ExportResult, SearchMatch } from '../../shared/types'
 import { createExportLogger, type ExportLogger } from './Logger'
 
@@ -69,6 +69,32 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
   }
 }
 
+/**
+ * Build destination path for MR (Model Recognition) exports.
+ * MR matches are single .png files, so the path includes the filename.
+ */
+function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
+  const mrTag = match.mrFolder || (match.matchType === 'mr-pass' ? 'MR-Pass' : 'MR-Fail')
+  const fileName = `${match.imei}_${mrTag}.png`
+
+  switch (organize) {
+    case 'flat':
+      return join(dest, `${match.imei}_${match.machineName}_${match.date}_${mrTag}.png`)
+    case 'by-machine':
+      return join(dest, match.machineName, `${match.imei}_${match.date}_${mrTag}.png`)
+    case 'by-date':
+      return join(dest, match.date, `${match.imei}_${match.machineName}_${mrTag}.png`)
+    case 'machine-date':
+      return join(dest, match.machineName, match.date, fileName)
+    case 'date-machine':
+      return join(dest, match.date, match.machineName, fileName)
+    case 'by-imei':
+      return join(dest, match.imei, `${match.machineName}_${match.date}_${mrTag}.png`)
+    default:
+      return join(dest, `${match.imei}_${match.machineName}_${match.date}_${mrTag}.png`)
+  }
+}
+
 function matchesImageType(fileName: string, imageType: ExportRequest['imageType']): boolean {
   if (imageType === 'both') return true
   const ext = extname(fileName).toLowerCase()
@@ -96,6 +122,15 @@ async function folderExists(path: string): Promise<boolean> {
   try {
     const s = await stat(path)
     return s.isDirectory()
+  } catch {
+    return false
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    const s = await stat(path)
+    return s.isFile()
   } catch {
     return false
   }
@@ -251,56 +286,104 @@ export async function exportResults(
 
     sendProgress(match)
 
-    const destPath = buildDestPath(destination, match, organize)
+    const isMR = match.matchType === 'mr-pass' || match.matchType === 'mr-fail'
     const folderStart = Date.now()
 
-    logger.info(`── ${match.folderName}  (${match.machineName} / ${match.date}) ──`)
-    logger.info(`  Source : ${match.sourcePath}`)
-    logger.info(`  Dest   : ${destPath}`)
+    if (isMR) {
+      // ── MR export: single .png file copy ──
+      const destFilePath = buildMRDestFilePath(destination, match, organize)
+      const destDir = dirname(destFilePath)
 
-    try {
-      const exists = await folderExists(destPath)
+      logger.info(`── MR ${match.matchType === 'mr-pass' ? 'PASS' : 'FAIL'}: ${match.imei}  (${match.machineName} / ${match.date} / ${match.mrFolder}) ──`)
+      logger.info(`  Source : ${match.sourcePath}`)
+      logger.info(`  Dest   : ${destFilePath}`)
 
-      if (exists && duplicates === 'skip') {
-        skipped++
-        logger.warn(`  SKIPPED — folder already exists at destination`)
-        sendProgress(match)
-        return
+      try {
+        const exists = await fileExists(destFilePath)
+
+        if (exists && duplicates === 'skip') {
+          skipped++
+          logger.warn(`  SKIPPED — file already exists at destination`)
+          sendProgress(match)
+          return
+        }
+
+        await mkdir(destDir, { recursive: true })
+        if (exists && duplicates === 'overwrite') {
+          logger.info(`  Overwriting existing file`)
+        }
+
+        const fileStat = await stat(match.sourcePath)
+        await copyFile(match.sourcePath, destFilePath)
+        totalFilesCopied++
+        totalBytesCopied += fileStat.size
+        exported++
+
+        const elapsed = Date.now() - folderStart
+        logger.info(`  ✓ 1 file  (${formatBytes(fileStat.size)})  ${elapsed}ms`)
+        // MR exports always copy — never delete source MR images from NAS
+      } catch (err) {
+        failed++
+        const errMsg = err instanceof Error ? err.message : String(err)
+        failedItems.push({
+          imei: match.imei,
+          sourcePath: match.sourcePath,
+          error: errMsg
+        })
+        logger.error(`  ✗ FAILED — ${errMsg}`)
       }
+    } else {
+      // ── Standard export: folder-level copy ──
+      const destPath = buildDestPath(destination, match, organize)
 
-      if (exists && duplicates === 'overwrite') {
-        await rm(destPath, { recursive: true, force: true })
-        logger.info(`  Overwriting existing destination folder`)
+      logger.info(`── ${match.folderName}  (${match.machineName} / ${match.date}) ──`)
+      logger.info(`  Source : ${match.sourcePath}`)
+      logger.info(`  Dest   : ${destPath}`)
+
+      try {
+        const exists = await folderExists(destPath)
+
+        if (exists && duplicates === 'skip') {
+          skipped++
+          logger.warn(`  SKIPPED — folder already exists at destination`)
+          sendProgress(match)
+          return
+        }
+
+        if (exists && duplicates === 'overwrite') {
+          await rm(destPath, { recursive: true, force: true })
+          logger.info(`  Overwriting existing destination folder`)
+        }
+
+        const { filesCopied, bytesCopied } = await copyFolderParallel(
+          match.sourcePath,
+          destPath,
+          imageType,
+          aiImages,
+          logger
+        )
+
+        totalFilesCopied += filesCopied
+        totalBytesCopied += bytesCopied
+        exported++
+
+        const elapsed = Date.now() - folderStart
+        logger.info(`  ✓ ${filesCopied} files  (${formatBytes(bytesCopied)})  ${elapsed}ms`)
+
+        if (action === 'move') {
+          await removeSource(match.sourcePath)
+          logger.warn(`  Source deleted (move mode)`)
+        }
+      } catch (err) {
+        failed++
+        const errMsg = err instanceof Error ? err.message : String(err)
+        failedItems.push({
+          imei: match.imei,
+          sourcePath: match.sourcePath,
+          error: errMsg
+        })
+        logger.error(`  ✗ FAILED — ${errMsg}`)
       }
-
-      const { filesCopied, bytesCopied } = await copyFolderParallel(
-        match.sourcePath,
-        destPath,
-        imageType,
-        aiImages,
-        logger
-      )
-
-      totalFilesCopied += filesCopied
-      totalBytesCopied += bytesCopied
-      exported++
-
-      const elapsed = Date.now() - folderStart
-      logger.info(`  ✓ ${filesCopied} files  (${formatBytes(bytesCopied)})  ${elapsed}ms`)
-
-      if (action === 'move') {
-        await removeSource(match.sourcePath)
-        logger.warn(`  Source deleted (move mode)`)
-      }
-    } catch (err) {
-      failed++
-      const errMsg = err instanceof Error ? err.message : String(err)
-      failedItems.push({
-        imei: match.imei,
-        sourcePath: match.sourcePath,
-        error: errMsg
-      })
-      logger.error(`  ✗ FAILED — ${errMsg}`)
     }
 
     sendProgress(match)

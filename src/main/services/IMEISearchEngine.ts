@@ -45,6 +45,11 @@ export async function searchIMEIs(
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
 ): Promise<SearchResult> {
+  // MR mode: entirely different search path
+  if (request.mrPass || request.mrFail) {
+    return searchMRImages(request, onProgress, onMatches)
+  }
+
   cancelled = false
   const startTime = Date.now()
 
@@ -204,8 +209,7 @@ function buildResult(
     currentDate: '',
     matchesSoFar: matches.length,
     foldersScanned,
-    totalFolders: foldersScanned,
-    cached: false
+    totalFolders: foldersScanned
   })
 
   return {
@@ -241,6 +245,148 @@ function isDateInRange(dateStr: string, request: SearchRequest): boolean {
   if (request.dateEnd && folderDate > request.dateEnd) return false
 
   return true
+}
+
+// ── MR (Model Recognition) search ──────────────────────────────────
+// Searches ModelRecogImages/{date}/{Brand-Model|Error-Error}/ for .png
+// files whose filename is a 15-digit IMEI matching the audit list.
+
+async function searchMRImages(
+  request: SearchRequest,
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void
+): Promise<SearchResult> {
+  cancelled = false
+  const startTime = Date.now()
+
+  const imeiSet = new Set(request.imeis)
+  const matches: SearchMatch[] = []
+  const foundIMEIs = new Set<string>()
+
+  // Phase 1: Discover date folders inside ModelRecogImages per machine
+  type MRDateFolder = { machine: string; datePath: string; dateStr: string }
+  const dateFolders: MRDateFolder[] = []
+
+  await pooled(request.selectedFolders, CONCURRENCY, async (folderName) => {
+    if (cancelled) return
+    const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
+
+    try {
+      const entries = await readdir(mrPath, { withFileTypes: true })
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        if (!DATE_REGEX.test(entry.name)) continue
+        if (!isDateInRange(entry.name, request)) continue
+
+        dateFolders.push({
+          machine: folderName,
+          datePath: join(mrPath, entry.name),
+          dateStr: entry.name
+        })
+      }
+    } catch {
+      // ModelRecogImages not found for this machine — skip
+    }
+  })
+
+  if (cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, onProgress)
+
+  const totalFolders = dateFolders.length
+  let foldersScanned = 0
+  let lastProgressTime = 0
+
+  const sendProgress = (machine: string, dateStr: string): void => {
+    const now = Date.now()
+    if (now - lastProgressTime < 150) return
+    lastProgressTime = now
+    onProgress({
+      phase: 'scanning',
+      percent: totalFolders > 0 ? (foldersScanned / totalFolders) * 100 : 0,
+      currentMachine: machine,
+      currentDate: dateStr,
+      matchesSoFar: matches.length,
+      foldersScanned,
+      totalFolders,
+    })
+  }
+
+  if (dateFolders.length > 0) {
+    onProgress({
+      phase: 'scanning',
+      percent: 0,
+      currentMachine: dateFolders[0].machine,
+      currentDate: dateFolders[0].dateStr,
+      matchesSoFar: 0,
+      foldersScanned: 0,
+      totalFolders,
+    })
+  }
+
+  // Phase 2: Scan date folders for Brand-Model / Error-Error subfolders
+  await pooled(dateFolders, CONCURRENCY, async ({ machine, datePath, dateStr }) => {
+    if (cancelled) return
+    sendProgress(machine, dateStr)
+
+    try {
+      const subFolders = await readdir(datePath, { withFileTypes: true })
+
+      for (const sub of subFolders) {
+        if (cancelled) break
+        if (!sub.isDirectory()) continue
+
+        const isErrorFolder = sub.name.toLowerCase() === 'error-error'
+
+        // Only scan folders matching the active toggles
+        if (isErrorFolder && !request.mrFail) continue
+        if (!isErrorFolder && !request.mrPass) continue
+
+        const subPath = join(datePath, sub.name)
+
+        try {
+          const files = await readdir(subPath, { withFileTypes: true })
+          const batch: SearchMatch[] = []
+
+          for (const file of files) {
+            if (!file.isFile()) continue
+            if (!file.name.toLowerCase().endsWith('.png')) continue
+
+            const imeiFromFile = file.name.replace(/\.png$/i, '')
+            if (!/^\d{15}$/.test(imeiFromFile)) continue
+            if (!imeiSet.has(imeiFromFile)) continue
+
+            const match: SearchMatch = {
+              imei: imeiFromFile,
+              machineName: machine,
+              date: dateStr,
+              scanIndex: 0,
+              folderName: file.name,
+              sourcePath: join(subPath, file.name),
+              bmpCount: 0,
+              jpegCount: 0,
+              otherCount: 1,
+              totalFiles: 1,
+              matchType: isErrorFolder ? 'mr-fail' : 'mr-pass',
+              mrFolder: sub.name
+            }
+            matches.push(match)
+            batch.push(match)
+            foundIMEIs.add(imeiFromFile)
+          }
+
+          if (batch.length > 0) onMatches(batch)
+        } catch {
+          // Subfolder not accessible
+        }
+      }
+    } catch {
+      // Date folder not accessible
+    }
+
+    foldersScanned++
+  })
+
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, onProgress)
 }
 
 async function countFiles(folderPath: string): Promise<{ bmp: number; jpeg: number; other: number }> {

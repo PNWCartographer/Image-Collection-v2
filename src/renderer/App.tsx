@@ -125,7 +125,9 @@ function App(): JSX.Element {
         dateEnd: dr.dateEnd || undefined,
         timeStart: dr.timeStart || undefined,
         timeEnd: dr.timeEnd || undefined,
-        scanIndexFilter: settings.scanIndex as 'all' | 'first_only'
+        scanIndexFilter: settings.scanIndex as 'all' | 'first_only',
+        mrPass: settings.mrPass || undefined,
+        mrFail: settings.mrFail || undefined
       })
       setSearchResult(result)
       setStreamingMatches([]) // Clear streaming state — final result replaces it

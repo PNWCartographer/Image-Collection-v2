@@ -33,6 +33,8 @@ export interface SearchRequest {
   timeStart?: string
   timeEnd?: string
   scanIndexFilter: 'all' | 'first_only'
+  mrPass?: boolean
+  mrFail?: boolean
 }
 
 export interface SearchMatch {
@@ -46,6 +48,10 @@ export interface SearchMatch {
   jpegCount: number
   otherCount: number
   totalFiles: number
+  /** 'standard' for normal IMEI folder matches, 'mr-pass'/'mr-fail' for ModelRecogImages */
+  matchType?: 'standard' | 'mr-pass' | 'mr-fail'
+  /** Brand-Model folder name (MR PASS) or 'Error-Error' (MR FAIL) */
+  mrFolder?: string
 }
 
 export interface SearchProgress {

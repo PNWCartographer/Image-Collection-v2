@@ -133,3 +133,14 @@
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }
+
+/* ─── MR (Model Recognition) result indicators ─── */
+.mrPass {
+  color: var(--status-green);
+  font-weight: var(--font-weight-semibold);
+}
+
+.mrFail {
+  color: var(--status-red);
+  font-weight: var(--font-weight-semibold);
+}
