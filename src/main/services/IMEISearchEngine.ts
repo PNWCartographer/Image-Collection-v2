@@ -1,10 +1,13 @@
 import { readdir } from 'fs/promises'
 import { join } from 'path'
 import type { SearchRequest, SearchMatch, SearchProgress, SearchResult } from '../../shared/types'
+import { pooled, type CancelToken } from '../../shared/pool'
 
 const DATE_REGEX = /^\d{8}$/
+const MR_ROOT = 'modelrecogimages'
+const MR_FAIL_FOLDER = 'error-error'
 const SKIP_FOLDERS = new Set([
-  '#recycle', '$recycle.bin', 'bin', 'modelrecogimages', 'version_control'
+  '#recycle', '$recycle.bin', 'bin', MR_ROOT, 'version_control'
 ])
 
 // Concurrent NAS reads — tuned for RS3617RPxs (12-drive RAID 5, 1Gbps)
@@ -12,34 +15,10 @@ const SKIP_FOLDERS = new Set([
 const CONCURRENCY = 48
 
 /** Per-operation cancellation token — avoids race conditions between overlapping calls. */
-let activeToken: { cancelled: boolean } = { cancelled: false }
+let activeToken: CancelToken = { cancelled: false }
 
 export function cancelSearch(): void {
   activeToken.cancelled = true
-}
-
-async function pooled<T, R>(
-  items: T[],
-  concurrency: number,
-  token: { cancelled: boolean },
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length)
-  let nextIndex = 0
-
-  async function worker(): Promise<void> {
-    while (nextIndex < items.length && !token.cancelled) {
-      const idx = nextIndex++
-      results[idx] = await fn(items[idx])
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    () => worker()
-  )
-  await Promise.all(workers)
-  return results
 }
 
 export async function searchIMEIs(
@@ -251,9 +230,26 @@ function isDateInRange(dateStr: string, request: SearchRequest): boolean {
   return true
 }
 
+/**
+ * Extract the 15-digit IMEI from an MR image filename.
+ * Format: SG-{machine}-{code}-{IMEI}-{brand}-{model}.png
+ * Returns the IMEI string or null if the filename doesn't match.
+ */
+function extractMRImei(fileName: string): string | null {
+  const segments = fileName.replace(/\.png$/i, '').split('-')
+  // Minimum segments: SG, machine, code, IMEI, brand, model = 6
+  // But model names like "iPhone13ProMax" are a single segment, and
+  // brand-model combos vary, so just ensure index 3 exists and is 15 digits
+  if (segments.length < 4) return null
+  const candidate = segments[3]
+  if (/^\d{15}$/.test(candidate)) return candidate
+  return null
+}
+
 // ── MR (Model Recognition) search ──────────────────────────────────
 // Searches ModelRecogImages/{date}/{Brand-Model|Error-Error}/ for .png
-// files whose filename is a 15-digit IMEI matching the audit list.
+// files named SG-{machine}-{code}-{IMEI}-{brand}-{model}.png.
+// The IMEI is extracted from the 4th hyphen-delimited segment.
 
 async function searchMRImages(
   request: SearchRequest,
@@ -274,7 +270,7 @@ async function searchMRImages(
 
   await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
     if (token.cancelled) return
-    const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
+    const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')  // case-insensitive match via SKIP_FOLDERS constant MR_ROOT
 
     try {
       const entries = await readdir(mrPath, { withFileTypes: true })
@@ -340,7 +336,7 @@ async function searchMRImages(
         if (token.cancelled) break
         if (!sub.isDirectory()) continue
 
-        const isErrorFolder = sub.name.toLowerCase() === 'error-error'
+        const isErrorFolder = sub.name.toLowerCase() === MR_FAIL_FOLDER
 
         // Only scan folders matching the active toggles
         if (isErrorFolder && !request.mrFail) continue
@@ -356,8 +352,10 @@ async function searchMRImages(
             if (!file.isFile()) continue
             if (!file.name.toLowerCase().endsWith('.png')) continue
 
-            const imeiFromFile = file.name.replace(/\.png$/i, '')
-            if (!/^\d{15}$/.test(imeiFromFile)) continue
+            // MR filenames: SG-{machine}-{code}-{IMEI}-{brand}-{model}.png
+            // IMEI is the 4th hyphen-delimited segment (index 3)
+            const imeiFromFile = extractMRImei(file.name)
+            if (!imeiFromFile) continue
             if (!imeiSet.has(imeiFromFile)) continue
 
             const match: SearchMatch = {

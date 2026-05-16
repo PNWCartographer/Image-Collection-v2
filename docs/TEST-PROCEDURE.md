@@ -228,11 +228,5 @@
 
 ## Not Yet Testable (Future Milestones)
 
-- **Export Results** — button enabled after search but export logic not yet built (Milestone 6)
 - **Export Summary Report** — color-coded CSV/Excel (Milestone 6b)
-- **Multi-Source** — switching between NAS sources (Milestone 8)
-- **Search History** — recalling past searches (Milestone 8)
-- **MR PASS / MR FAIL image collection** — toggles present but collection logic pending (Milestone 10)
-- **AI Images Only** — toggle present but collection logic pending
-- **Settings persistence** — individual settings (Action, Image Type, etc.) don't persist yet (Milestone 9)
 - **NSIS installer** — full install/uninstall (Milestone 12)

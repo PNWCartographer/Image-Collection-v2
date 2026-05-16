@@ -32,7 +32,7 @@ function App(): JSX.Element {
   const sourceNameRef = useRef('')
 
   const settingsRef = useRef<SettingsState>({
-    action: 'copy', imageType: 'both', organize: 'flat',
+    action: 'copy', imageType: 'both', organize: 'flat' as const,
     duplicates: 'skip', scanIndex: 'all',
     mrPass: false, mrFail: false, aiImages: false, destination: ''
   })
@@ -135,7 +135,7 @@ function App(): JSX.Element {
         imeis: auditResult.validIMEIs,
         dateStart: dr.dateStart || undefined,
         dateEnd: dr.dateEnd || undefined,
-        scanIndexFilter: settings.scanIndex as 'all' | 'first_only',
+        scanIndexFilter: settings.scanIndex,
         mrPass: settings.mrPass || undefined,
         mrFail: settings.mrFail || undefined
       })
@@ -160,9 +160,11 @@ function App(): JSX.Element {
         missingCount: result.missingIMEIs.length,
         elapsedMs: result.elapsedMs
       }
-      const updated = [entry, ...searchHistory].slice(0, 5)
-      setSearchHistory(updated)
-      window.electronAPI.settingsSet('searchHistory', updated)
+      setSearchHistory((prev) => {
+        const updated = [entry, ...prev].slice(0, 5)
+        window.electronAPI.settingsSet('searchHistory', updated)
+        return updated
+      })
     } catch (err) {
       console.error('Search failed:', err)
     } finally {
@@ -188,10 +190,10 @@ function App(): JSX.Element {
       const request: ExportRequest = {
         matches: searchResult.matches,
         destination: settings.destination,
-        action: settings.action as 'copy' | 'move',
-        imageType: settings.imageType as 'both' | 'bmp' | 'jpeg',
-        organize: settings.organize as ExportRequest['organize'],
-        duplicates: settings.duplicates as 'skip' | 'overwrite',
+        action: settings.action,
+        imageType: settings.imageType,
+        organize: settings.organize,
+        duplicates: settings.duplicates,
         aiImages: settings.aiImages
       }
       const result = await window.electronAPI.exportResults(request)

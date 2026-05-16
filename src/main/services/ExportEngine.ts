@@ -3,6 +3,7 @@ import { join, extname, dirname } from 'path'
 import { constants as fsConstants } from 'fs'
 import type { ExportRequest, ExportProgress, ExportResult, SearchMatch } from '../../shared/types'
 import { formatElapsed, formatBytes } from '../../shared/utils'
+import { pooledVoid, type CancelToken } from '../../shared/pool'
 import { createExportLogger, type ExportLogger } from './Logger'
 
 // ── Concurrency tuning ──────────────────────────────────────────────
@@ -13,33 +14,10 @@ const FOLDER_CONCURRENCY = 8
 const FILE_CONCURRENCY = 4
 
 /** Per-operation cancellation token — avoids race conditions between overlapping calls. */
-let activeToken: { cancelled: boolean } = { cancelled: false }
+let activeToken: CancelToken = { cancelled: false }
 
 export function cancelExport(): void {
   activeToken.cancelled = true
-}
-
-// ── Pooled async concurrency (same pattern as search engine) ────────
-async function pooled<T>(
-  items: T[],
-  concurrency: number,
-  token: { cancelled: boolean },
-  fn: (item: T) => Promise<void>
-): Promise<void> {
-  let nextIndex = 0
-
-  async function worker(): Promise<void> {
-    while (nextIndex < items.length && !token.cancelled) {
-      const idx = nextIndex++
-      await fn(items[idx])
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    () => worker()
-  )
-  await Promise.all(workers)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -169,7 +147,7 @@ async function copyFolderParallel(
     const dirs = entries.filter((e) => e.isDirectory())
 
     // ── Parallel file copy ──
-    await pooled(files, FILE_CONCURRENCY, token, async (file) => {
+    await pooledVoid(files, FILE_CONCURRENCY, token, async (file) => {
       if (token.cancelled) return
       const srcPath = join(effectiveSrc, file.name)
       const dstPath = join(destDir, file.name)
@@ -288,7 +266,7 @@ export async function exportResults(
   }
 
   // ── Parallel folder export ──
-  await pooled(matches, FOLDER_CONCURRENCY, token, async (match) => {
+  await pooledVoid(matches, FOLDER_CONCURRENCY, token, async (match) => {
     if (token.cancelled) return
 
     sendProgress(match)

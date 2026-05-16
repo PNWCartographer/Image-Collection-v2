@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import GlassCard from '../layout/GlassCard'
 import type { SearchResult } from '../../../shared/types'
 import { formatElapsed } from '../../../shared/utils'
 import styles from './ResultsPanel.module.css'
 
 type SortKey = 'imei' | 'machineName' | 'date' | 'scanIndex' | 'totalFiles'
+
+const DISPLAY_LIMIT = 500
 
 interface ResultsPanelProps {
   lang: 'en' | 'zh'
@@ -13,12 +15,15 @@ interface ResultsPanelProps {
 }
 
 export default function ResultsPanel({ lang, result, searching }: ResultsPanelProps): JSX.Element {
-  const DISPLAY_LIMIT = 500
-
   const [sortKey, setSortKey] = useState<SortKey>('imei')
   const [sortAsc, setSortAsc] = useState(true)
   const [showMissing, setShowMissing] = useState(false)
   const [showAll, setShowAll] = useState(false)
+
+  // Reset showAll when results change (new search)
+  useEffect(() => {
+    setShowAll(false)
+  }, [result])
 
   const sortedMatches = useMemo(() => {
     if (!result) return []

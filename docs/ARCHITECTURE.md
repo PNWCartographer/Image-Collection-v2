@@ -29,13 +29,13 @@
 │  │    (Node.js)         │               │ (React + Vite)   │ │
 │  │                      │               │                  │ │
 │  │  ┌────────────────┐  │               │  ┌────────────┐  │ │
-│  │  │ FolderScanner  │  │               │  │ App Shell   │  │ │
-│  │  │ AuditParser    │  │               │  │ SourcePanel │  │ │
-│  │  │ IMEIMatcher    │  │               │  │ AuditPanel  │  │ │
-│  │  │ FileExporter   │  │               │  │ SettingsBar │  │ │
-│  │  │ SettingsStore  │  │               │  │ ResultsView │  │ │
-│  │  │ ReportGen      │  │               │  │ ProgressBar │  │ │
-│  │  └────────────────┘  │               │  │ ThemeToggle │  │ │
+│  │  │ FolderScanner     │  │               │  │ App Shell      │  │ │
+│  │  │ AuditParser       │  │               │  │ SourcePanel    │  │ │
+│  │  │ IMEISearchEngine  │  │               │  │ AuditPanel     │  │ │
+│  │  │ ExportEngine      │  │               │  │ SettingsPanel  │  │ │
+│  │  │ Logger            │  │               │  │ ResultsPanel   │  │ │
+│  │  │ electron-store    │  │               │  │ ProgressBar    │  │ │
+│  │  └────────────────┘  │               │  │ ActionButtons  │  │ │
 │  │                      │               │  └────────────┘  │ │
 │  └─────────────────────┘               └─────────────────┘ │
 │                                                              │
@@ -66,15 +66,12 @@ interface FolderScanResult {
     name: string;
     path: string;
     isDateFolder: boolean;    // matches /^\d{8}$/
-    isMachineFolder: boolean; // matches /^M\d+$/
-    modifiedDate: Date;
+    isMachineFolder: boolean; // matches /^M\d+$/i
   }[];
 }
 
-// IPC Channels:
-// 'scanner:scan-root'      → scans Level 1 subfolders
-// 'scanner:scan-machine'   → scans Level 2 subfolders (date folders) within a machine
-// 'scanner:scan-date'      → scans Level 3 subfolders (IMEI_Index folders) within a date
+// IPC Channel:
+// 'scan-root' → scans Level 1 subfolders, returns FolderScanResult
 ```
 
 **Key logic:**
@@ -100,7 +97,7 @@ interface AuditParseResult {
 }
 
 // IPC Channel:
-// 'audit:parse' → accepts file path, returns AuditParseResult
+// 'parse-audit-file' → accepts file path, returns AuditParseResult
 ```
 
 **Parsing strategies:**
@@ -110,180 +107,154 @@ interface AuditParseResult {
 
 **IMEI validation**: `const isValidIMEI = /^\d{15}$/.test(value.trim())`
 
-### 3.3 IMEIMatcher
+### 3.3 IMEISearchEngine
 
-Orchestrates the search across selected folders and matches against the audit list.
+Orchestrates the search across selected folders and matches against the audit list. File: `src/main/services/IMEISearchEngine.ts`.
 
 ```typescript
-interface SearchConfig {
+interface SearchRequest {
   rootPath: string;
   selectedFolders: string[];     // e.g., ['M8', 'M10', 'M12']
-  imeiList: string[];            // from AuditParser
-  dateRange?: {
-    start: string;               // YYYYMMDD
-    end: string;                 // YYYYMMDD
-  };
-  scanIndexFilter: 'all' | 'first_only' | 'rescans_only';
-  mrPass: boolean;                 // collect MR PASS images
-  mrFail: boolean;                 // collect MR FAIL images (path TBD)
+  imeis: string[];               // from AuditParser
+  dateStart?: string;            // YYYY-MM-DD (HTML date input format)
+  dateEnd?: string;              // YYYY-MM-DD
+  scanIndexFilter: 'all' | 'first_only';
+  mrPass?: boolean;              // collect MR PASS images
+  mrFail?: boolean;              // collect MR FAIL images
 }
 
-interface MatchResult {
+interface SearchMatch {
   imei: string;
   machineName: string;
-  dateFolder: string;
+  date: string;                  // YYYYMMDD from folder name
   scanIndex: number;
+  folderName: string;
   sourcePath: string;
-  fileCount: number;
   bmpCount: number;
   jpegCount: number;
-  mrPassFile: string | null;       // MR PASS .png filename if found
-  mrFailFiles: string[];           // MR FAIL filenames if found (TBD)
-  totalSizeBytes: number;
-  status: 'complete' | 'incomplete';
-  hasMRImages: boolean;
+  otherCount: number;
+  totalFiles: number;
+  matchType?: 'standard' | 'mr-pass' | 'mr-fail';
+  mrFolder?: string;             // Brand-Model folder or 'Error-Error'
 }
 
 interface SearchResult {
-  matches: MatchResult[];
+  matches: SearchMatch[];
   missingIMEIs: string[];        // audit list entries with no match
-  searchDurationMs: number;
-  totalFoldersScanned: number;
+  totalSearched: number;
+  elapsedMs: number;
+  folderCount: number;
 }
 
 // IPC Channels:
-// 'search:start'     → begins search, returns SearchResult
-// 'search:progress'  → stream: { percent, currentFolder, matchesSoFar }
-// 'search:cancel'    → cancels an in-progress search
+// 'search-imeis'        → begins search, returns SearchResult
+// 'search-progress'     → stream: SearchProgress events
+// 'search-matches'      → stream: SearchMatch[] batches (live results)
+// 'cancel-search'       → cancels an in-progress search
 ```
+
+**Concurrency**: Uses a shared `pooled()` worker pool (from `src/shared/pool.ts`) with 48 concurrent NAS reads, tuned for the RS3617RPxs (12-drive RAID 5, 1 Gbps).
 
 **Search algorithm — Standard mode (MR PASS OFF, MR FAIL OFF):**
-1. For each selected folder in parallel (Promise.allSettled):
+1. Phase 1 — Discover date folders (parallel across machines via `pooled()`):
    a. Read subfolders, filter to date folders (`/^\d{8}$/`)
    b. Apply date range filter if specified
-   c. For each date folder, read IMEI_Index subfolders
-   d. For each IMEI_Index folder:
-      - Extract IMEI: `folderName.split('_')[0]` (first 15 chars)
-      - Extract scan index: `parseInt(folderName.split('_')[1])`
-      - Apply scan index filter
+2. Phase 2 — Scan date folders for IMEI matches (parallel pool):
+   a. For each date folder, read IMEI_Index subfolders
+   b. For each IMEI_Index folder:
+      - Extract IMEI via `parseIMEIFolder()`: split on underscore, validate first 15 chars are digits
+      - Extract scan index: integer after the underscore
+      - Apply scan index filter (`first_only` keeps only `_1`)
       - Check IMEI against audit list (Set lookup — O(1))
-      - If match: stat files, count by extension, calculate size
-2. Aggregate results, identify missing IMEIs
-3. Apply incomplete detection heuristic
+      - If match: count files by extension (bmp/jpeg/other)
+   c. Stream matched batches to renderer via IPC
+3. Build final result with missing IMEIs list
 
 **Search algorithm — MR mode (MR PASS ON and/or MR FAIL ON):**
-1. For each selected folder in parallel (Promise.allSettled):
-   a. Locate `{machine}/ModelRecogImages/` subfolder
-   b. Read date subfolders within ModelRecogImages, filter to `^\d{8}$`
-   c. Apply date range filter if specified
-   d. For each date folder:
-      - If MR PASS is ON: read all subfolders EXCEPT `Error-Error` (these are brand-model folders)
-        - For each brand-model folder, list `.png` files
-        - Extract IMEI from filename: `filename.split('-')[3]` (4th segment)
-        - Check IMEI against audit list
-        - If match: record file path, brand-model folder name, file size
-      - If MR FAIL is ON: read `Error-Error/` subfolder
-        - List `.png` files
-        - Extract IMEI from filename: same method
-        - Check IMEI against audit list
-        - If match: record file path, file size, mark as MR fail
-2. Aggregate results, identify missing IMEIs
-3. No incomplete detection for MR mode (each IMEI produces one image file)
+1. Phase 1 — Discover date folders inside `{machine}/ModelRecogImages/` per machine
+2. Phase 2 — For each date folder:
+   - Read Brand-Model and Error-Error subfolders
+   - If MR PASS is ON: scan non-`Error-Error` folders
+   - If MR FAIL is ON: scan `Error-Error/` folder
+   - For each `.png` file, extract IMEI via `extractMRImei()`:
+     - Filename format: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`
+     - Split on `-`, take segment index 3 (4th segment), validate 15 digits
+   - Check IMEI against audit list; if match, record with matchType and mrFolder
 
-**Incomplete detection:**
-- Calculate median file count across all matches
-- Flag matches with file count < 50% of median as `'incomplete'`
+**Incomplete detection** (renderer-side, in `ResultsPanel.tsx`):
+- Computed via `useMemo`: calculate median file count across all matches
+- Flag matches with file count < 50% of median as incomplete (orange dot in UI)
 
-### 3.4 FileExporter
+### 3.4 ExportEngine
 
-Handles the actual file copy/move operations with progress tracking.
+Handles the actual file copy/move operations with progress tracking. File: `src/main/services/ExportEngine.ts`.
 
 ```typescript
-interface ExportConfig {
-  matches: MatchResult[];
-  destinationRoot: string;
+interface ExportRequest {
+  matches: SearchMatch[];
+  destination: string;
   action: 'copy' | 'move';
-  imageType: 'bmp' | 'jpeg' | 'both';
-  organization: 'flat' | 'by_machine' | 'by_date' | 'machine_date' | 'date_machine' | 'by_imei' | 'by_scan_index';
-  duplicateHandling: 'skip' | 'overwrite';
-  mrPass: boolean;                 // export MR PASS images only
-  mrFail: boolean;                 // export MR FAIL images only
-  aiImagesOnly: boolean;           // export only FD/ subfolder contents
+  imageType: 'both' | 'bmp' | 'jpeg';
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei';
+  duplicates: 'skip' | 'overwrite';
+  aiImages: boolean;               // export only FD/ subfolder contents
+}
+
+interface ExportResult {
+  exported: number;
+  skipped: number;
+  failed: number;
+  failedItems: { imei: string; sourcePath: string; error: string }[];
+  elapsedMs: number;
+  destinationPath: string;
+  logPath: string;
 }
 
 // IPC Channels:
-// 'export:start'    → begins export
-// 'export:progress' → stream: { percent, currentIMEI, filesCopied, bytesTransferred }
-// 'export:cancel'   → cancels export
-// 'export:complete' → returns ExportSummary
+// 'export-results'     → begins export, returns ExportResult
+// 'export-progress'    → stream: ExportProgress events
+// 'cancel-export'      → cancels active export
 ```
+
+**Concurrency**: 8 folders × 4 file copies = 32 concurrent NAS reads via `pooledVoid()`.
 
 **Destination path construction by organization mode:**
 ```
 flat:           dest/{IMEI}_{index}/
-by_machine:     dest/{machine}/{IMEI}_{index}/
-by_date:        dest/{date}/{IMEI}_{index}/
-machine_date:   dest/{machine}/{date}/{IMEI}_{index}/
-date_machine:   dest/{date}/{machine}/{IMEI}_{index}/
-by_imei:        dest/{IMEI}/{machine}_{date}_{index}/
-by_scan_index:  dest/scan_{index}/{IMEI}_{index}/
+by-machine:     dest/{machine}/{IMEI}_{index}/
+by-date:        dest/{date}/{IMEI}_{index}/
+machine-date:   dest/{machine}/{date}/{IMEI}_{index}/
+date-machine:   dest/{date}/{machine}/{IMEI}_{index}/
+by-imei:        dest/{IMEI}/{machine}_{date}_{index}/
 ```
+
+**MR exports** use a separate `buildMRDestFilePath()` — each match is a single `.png` file.
 
 **File operations:**
-- **Copy**: Recursive directory copy using `fs.cp` (Node 16+) or manual recursive copy
-- **Move**: `fs.rename` when same device; falls back to copy + delete for cross-device (NAS → local)
-- **Image type filter**: During copy, skip files that don't match the selected extension filter
-- **Cross-device safety**: Verify copy integrity (file count + size match) before deleting source on move operations
+- **Copy**: Recursive `copyFolderParallel()` with file-level concurrency and image type filtering
+- **Move**: Copy first, then `rm()` source on success. MR images are always copied (never deleted from shared `ModelRecogImages/`)
+- **AI Images Only**: Pre-checks `FD/` subfolder existence via `fs.access()`; returns null (counted as failed) if missing
+- **Duplicate handling**: `skip` checks destination existence before copy; `overwrite` removes existing destination first
 
-### 3.5 ReportGenerator
+### 3.5 Logger
 
-Generates the export summary report.
+Export logging with automatic rotation. File: `src/main/services/Logger.ts`.
 
-```typescript
-interface ReportConfig {
-  matches: MatchResult[];
-  missingIMEIs: string[];
-  exportConfig: ExportConfig;
-  exportDurationMs: number;
-  searchDurationMs: number;
-}
+- Generates timestamped log files in `%APPDATA%/image-collection-v2/logs/`
+- Keeps the 3 most recent log files, rotates older ones
+- `NoOpLogger` variant for testing (no file I/O)
 
-// IPC Channel:
-// 'report:generate' → creates report file at specified path
-```
+### 3.6 Settings Store
 
-**Output format**: Excel (.xlsx) with color-coded rows using xlsx-style or ExcelJS:
-- Green fill: status = 'complete'
-- Orange fill: status = 'incomplete'
-- Red fill: not found (missing IMEIs section)
+Uses `electron-store` for typed settings access via generic `settingsGet`/`settingsSet` IPC handlers.
 
-### 3.6 SettingsStore
-
-Wraps electron-store for typed settings access.
-
-```typescript
-interface AppSettings {
-  sources: {
-    id: string;
-    name: string;
-    rootPath: string;
-    folderToggles: Record<string, boolean>;
-  }[];
-  activeSourceId: string;
-  lastDestination: string;
-  action: 'copy' | 'move';
-  imageType: 'bmp' | 'jpeg' | 'both';
-  organization: string;
-  duplicateHandling: 'skip' | 'overwrite';
-  mrPass: boolean;
-  mrFail: boolean;
-  aiImagesOnly: boolean;
-  incompleteDetectionSecondary: boolean;
-  theme: 'dark' | 'light' | 'system';
-  searchHistory: SearchHistoryEntry[];
-  windowBounds: { x: number; y: number; width: number; height: number };
-}
-```
+Settings are stored per-key (not a single monolithic object):
+- `theme`: `'dark' | 'light'`
+- `lang`: `'en' | 'zh'`
+- `settingsPanel`: All SettingsPanel state (action, imageType, organize, etc.)
+- `searchHistory`: Last 5 search entries
+- `sources`: Multi-source configurations with per-source folder toggles
+- Window bounds saved/restored by Electron main process
 
 ---
 
@@ -327,19 +298,24 @@ App
 | Channel | Direction | Type | Description |
 |---------|-----------|------|-------------|
 | `scanner:scan-root` | Renderer → Main | Request/Response | Scan first-level subfolders |
-| `scanner:refresh` | Renderer → Main | Request/Response | Re-scan current root |
 | `audit:parse` | Renderer → Main | Request/Response | Parse audit file |
-| `search:start` | Renderer → Main | Request/Response | Begin IMEI search |
-| `search:progress` | Main → Renderer | Event Stream | Search progress updates |
+| `search:start` | Renderer → Main | Request/Response | Begin IMEI search, returns SearchResult |
+| `search:progress` | Main → Renderer | Event Stream | SearchProgress updates during scan |
+| `search:matches` | Main → Renderer | Event Stream | SearchMatch[] batches (live streaming) |
 | `search:cancel` | Renderer → Main | Fire-and-forget | Cancel active search |
-| `export:start` | Renderer → Main | Request/Response | Begin file export |
-| `export:progress` | Main → Renderer | Event Stream | Export progress updates |
+| `export:start` | Renderer → Main | Request/Response | Begin file export, returns ExportResult |
+| `export:progress` | Main → Renderer | Event Stream | ExportProgress updates during export |
 | `export:cancel` | Renderer → Main | Fire-and-forget | Cancel active export |
-| `report:generate` | Renderer → Main | Request/Response | Generate summary report |
-| `settings:get` | Renderer → Main | Request/Response | Load settings |
-| `settings:set` | Renderer → Main | Request/Response | Save settings |
+| `settings:get` | Renderer → Main | Request/Response | Load a settings key |
+| `settings:set` | Renderer → Main | Request/Response | Save a settings key |
 | `dialog:open-folder` | Renderer → Main | Request/Response | Open native folder picker |
 | `dialog:open-file` | Renderer → Main | Request/Response | Open native file picker |
+| `dialog:save-file` | Renderer → Main | Request/Response | Save file dialog (missing IMEIs export) |
+| `logs:open-folder` | Renderer → Main | Fire-and-forget | Open logs folder in explorer |
+| `window:minimize` | Renderer → Main | Fire-and-forget | Minimize window |
+| `window:maximize` | Renderer → Main | Fire-and-forget | Toggle maximize/restore |
+| `window:close` | Renderer → Main | Fire-and-forget | Close window |
+| `ping` | Renderer → Main | Request/Response | Health check (returns 'pong') |
 
 ---
 
@@ -352,65 +328,52 @@ image-collection-v2/
 │   ├── ARCHITECTURE.md
 │   ├── UI-SPEC.md
 │   ├── MILESTONES.md
-│   └── DIRECTORY-SCHEMA.md
+│   ├── DIRECTORY-SCHEMA.md
+│   └── TEST-PROCEDURE.md
 ├── src/
 │   ├── main/                      # Electron main process
-│   │   ├── index.ts               # App entry point, window creation
-│   │   ├── ipc.ts                 # IPC channel handlers
-│   │   ├── services/
-│   │   │   ├── FolderScanner.ts
-│   │   │   ├── AuditParser.ts
-│   │   │   ├── IMEIMatcher.ts
-│   │   │   ├── FileExporter.ts
-│   │   │   ├── ReportGenerator.ts
-│   │   │   └── SettingsStore.ts
-│   │   └── preload.ts             # Context bridge for IPC
+│   │   ├── index.ts               # App entry, window creation, IPC handlers
+│   │   ├── preload.ts             # Context bridge for IPC
+│   │   └── services/
+│   │       ├── FolderScanner.ts
+│   │       ├── AuditParser.ts
+│   │       ├── IMEISearchEngine.ts
+│   │       ├── ExportEngine.ts
+│   │       └── Logger.ts
 │   ├── renderer/                  # React renderer process
 │   │   ├── index.html
-│   │   ├── main.tsx               # React entry point
-│   │   ├── App.tsx                # Root component
-│   │   ├── components/
-│   │   │   ├── layout/
-│   │   │   │   ├── TitleBar.tsx
-│   │   │   │   ├── GlassCard.tsx
-│   │   │   │   └── StatusBar.tsx
-│   │   │   ├── source/
-│   │   │   │   ├── SourcePanel.tsx
-│   │   │   │   ├── SourceSwitcher.tsx
-│   │   │   │   ├── FolderToggleGrid.tsx
-│   │   │   │   └── DateRangeFilter.tsx
-│   │   │   ├── audit/
-│   │   │   │   ├── AuditPanel.tsx
-│   │   │   │   └── ImportSummary.tsx
-│   │   │   ├── settings/
-│   │   │   │   ├── SettingsPanel.tsx
-│   │   │   │   └── Tooltip.tsx
-│   │   │   ├── results/
-│   │   │   │   ├── ResultsPanel.tsx
-│   │   │   │   ├── ResultsList.tsx
-│   │   │   │   ├── MissingIMEIModal.tsx
-│   │   │   │   └── SearchHistory.tsx
-│   │   │   └── common/
-│   │   │       ├── ProgressBar.tsx
-│   │   │       ├── ActionButtons.tsx
-│   │   │       ├── Toggle.tsx
-│   │   │       └── Select.tsx
-│   │   ├── hooks/
-│   │   │   ├── useIPC.ts          # IPC communication hook
-│   │   │   ├── useSettings.ts     # Settings state hook
-│   │   │   └── useTheme.ts        # Theme management hook
-│   │   ├── styles/
-│   │   │   ├── globals.css        # CSS variables, resets
-│   │   │   ├── glass.module.css   # Liquid Glass component styles
-│   │   │   ├── dark.css           # Dark theme overrides
-│   │   │   └── light.css          # Light theme overrides
-│   │   └── types/
-│   │       └── ipc.ts             # Shared IPC type definitions
-│   └── shared/                    # Types shared between main and renderer
-│       └── types.ts
+│   │   ├── main.tsx               # React entry point (with ErrorBoundary)
+│   │   ├── App.tsx                # Root component, state management
+│   │   ├── App.module.css
+│   │   ├── styles.css             # CSS variables, global styles, themes
+│   │   └── components/
+│   │       ├── layout/
+│   │       │   ├── TitleBar.tsx + .module.css
+│   │       │   ├── GlassCard.tsx + .module.css
+│   │       │   └── StatusBar.tsx + .module.css
+│   │       ├── source/
+│   │       │   └── SourcePanel.tsx + .module.css
+│   │       ├── audit/
+│   │       │   └── AuditPanel.tsx + .module.css
+│   │       ├── settings/
+│   │       │   └── SettingsPanel.tsx + .module.css
+│   │       ├── results/
+│   │       │   └── ResultsPanel.tsx + .module.css
+│   │       └── common/
+│   │           ├── ProgressBar.tsx + .module.css
+│   │           ├── ActionButtons.tsx + .module.css
+│   │           ├── ErrorBoundary.tsx
+│   │           ├── Toggle.tsx + .module.css
+│   │           ├── Select.tsx + .module.css
+│   │           └── Tooltip.tsx + .module.css
+│   └── shared/                    # Shared between main and renderer
+│       ├── types.ts               # All TypeScript interfaces
+│       ├── utils.ts               # formatElapsed, formatBytes
+│       └── pool.ts                # Concurrent worker pool
 ├── package.json
-├── tsconfig.json
-├── vite.config.ts
+├── tsconfig.node.json             # Main process TypeScript config
+├── tsconfig.web.json              # Renderer TypeScript config
+├── electron.vite.config.ts
 ├── electron-builder.yml
 ├── .gitignore
 └── README.md
@@ -420,111 +383,62 @@ image-collection-v2/
 
 ## 7. Key Design Decisions
 
-### IMEI Extraction
+### IMEI Extraction (Standard Search)
 ```typescript
-function extractIMEI(folderName: string): string | null {
-  const parts = folderName.split('_');
-  if (parts.length < 2) return null;
-  const imei = parts[0];
-  return /^\d{15}$/.test(imei) ? imei : null;
-}
-
-function extractScanIndex(folderName: string): number | null {
-  const parts = folderName.split('_');
-  if (parts.length < 2) return null;
-  const index = parseInt(parts[1], 10);
-  return isNaN(index) ? null : index;
+// From IMEISearchEngine.ts — parseIMEIFolder()
+function parseIMEIFolder(name: string): { imei: string; scanIndex: number } | null {
+  const underscoreIdx = name.indexOf('_');
+  if (underscoreIdx === -1) return null;
+  const imeiPart = name.substring(0, underscoreIdx);
+  if (!/^\d{15}$/.test(imeiPart)) return null;
+  const scanIndex = parseInt(name.substring(underscoreIdx + 1), 10);
+  return isNaN(scanIndex) ? null : { imei: imeiPart, scanIndex };
 }
 ```
 
-### MR Image Detection & IMEI Extraction
+### MR Image IMEI Extraction
 ```typescript
-const MR_IMAGE_REGEX = /^SG-M\d+-\d+-\d{15}-.+\.png$/;
-
-function isMRImage(filename: string): boolean {
-  return MR_IMAGE_REGEX.test(filename);
+// From IMEISearchEngine.ts — extractMRImei()
+// Filename: SG-M008-075545-358627090247469-Apple-iPhone8.png
+// Segments:  0    1     2          3          4       5
+function extractMRImei(fileName: string): string | null {
+  const segments = fileName.replace(/\.png$/i, '').split('-');
+  if (segments.length < 4) return null;
+  const candidate = segments[3];
+  return /^\d{15}$/.test(candidate) ? candidate : null;
 }
+```
 
-function extractIMEIFromMRFilename(filename: string): string | null {
-  // SG-M008-075545-358627090247469-Apple-iPhone8.png
-  //   0      1       2          3          4       5
-  const parts = filename.replace(/\.png$/, '').split('-');
-  if (parts.length < 4) return null;
-  const imei = parts[3];
-  return /^\d{15}$/.test(imei) ? imei : null;
-}
+### MR Folder Classification
+```typescript
+// Named constants in IMEISearchEngine.ts
+const MR_ROOT = 'modelrecogimages';     // case-insensitive match
+const MR_FAIL_FOLDER = 'error-error';   // case-insensitive match
 
-function parseMRFilename(filename: string): {
-  machine: string;
-  code: string;
-  imei: string;
-  brand: string;
-  model: string;
-} | null {
-  const match = filename.match(
-    /^SG-(M\d+)-(\d+)-(\d{15})-([^-]+)-(.+)\.png$/
-  );
-  if (!match) return null;
-  return {
-    machine: match[1],
-    code: match[2],
-    imei: match[3],
-    brand: match[4],
-    model: match[5],
-  };
-}
-
-function isMRPassFolder(folderName: string): boolean {
-  return folderName !== 'Error-Error';
-}
-
-function isMRFailFolder(folderName: string): boolean {
-  return folderName === 'Error-Error';
-}
+// Any subfolder that is NOT Error-Error → MR PASS (Brand-Model folder)
+// Error-Error → MR FAIL
 ```
 
 ### Date Folder Detection
 ```typescript
-const DATE_FOLDER_REGEX = /^\d{8}$/;
-
-function isDateFolder(name: string): boolean {
-  return DATE_FOLDER_REGEX.test(name);
-}
+const DATE_REGEX = /^\d{8}$/;  // Matches YYYYMMDD
 ```
 
-### Cross-Device Move Safety
+### Cancellation Pattern
 ```typescript
-async function safeMove(src: string, dest: string): Promise<void> {
-  try {
-    await fs.rename(src, dest);
-  } catch (err) {
-    if (err.code === 'EXDEV') {
-      await fs.cp(src, dest, { recursive: true });
-      // Verify before deleting
-      const srcStats = await getDirectoryStats(src);
-      const destStats = await getDirectoryStats(dest);
-      if (srcStats.fileCount === destStats.fileCount &&
-          srcStats.totalSize === destStats.totalSize) {
-        await fs.rm(src, { recursive: true });
-      } else {
-        throw new Error('Move verification failed: source and destination mismatch');
-      }
-    } else {
-      throw err;
-    }
-  }
-}
+// Per-operation token pattern — used in both search and export engines.
+// Each new operation creates a fresh token; calling cancel() marks only the
+// active token, so stale operations are unaffected.
+let activeToken: CancelToken = { cancelled: false };
+export function cancelSearch(): void { activeToken.cancelled = true; }
 ```
 
-### Parallel Machine Scanning
+### Shared Concurrency Pool
 ```typescript
-async function searchMachines(folders: string[], imeiSet: Set<string>): Promise<MatchResult[]> {
-  const results = await Promise.allSettled(
-    folders.map(folder => scanMachineFolder(folder, imeiSet))
-  );
+// From src/shared/pool.ts — used by both engines
+async function pooled<T, R>(items: T[], concurrency: number, token: CancelToken,
+  fn: (item: T) => Promise<R>): Promise<R[]>
 
-  return results
-    .filter((r): r is PromiseFulfilledResult<MatchResult[]> => r.status === 'fulfilled')
-    .flatMap(r => r.value);
-}
+async function pooledVoid<T>(items: T[], concurrency: number, token: CancelToken,
+  fn: (item: T) => Promise<void>): Promise<void>
 ```

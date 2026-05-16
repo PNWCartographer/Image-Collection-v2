@@ -105,11 +105,11 @@ const ORGANIZE_OPTIONS = {
 }
 
 export interface SettingsState {
-  action: string
-  imageType: string
-  organize: string
-  duplicates: string
-  scanIndex: string
+  action: 'copy' | 'move'
+  imageType: 'both' | 'bmp' | 'jpeg'
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei'
+  duplicates: 'skip' | 'overwrite'
+  scanIndex: 'all' | 'first_only'
   mrPass: boolean
   mrFail: boolean
   aiImages: boolean
@@ -122,12 +122,12 @@ interface SettingsPanelProps {
 }
 
 export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelProps): JSX.Element {
-  const [action, setAction] = useState('copy')
-  const [imageType, setImageType] = useState('both')
-  const [organize, setOrganize] = useState('flat')
+  const [action, setAction] = useState<SettingsState['action']>('copy')
+  const [imageType, setImageType] = useState<SettingsState['imageType']>('both')
+  const [organize, setOrganize] = useState<SettingsState['organize']>('flat')
   const [orgOpen, setOrgOpen] = useState(false)
-  const [duplicates, setDuplicates] = useState('skip')
-  const [scanIndex, setScanIndex] = useState('all')
+  const [duplicates, setDuplicates] = useState<SettingsState['duplicates']>('skip')
+  const [scanIndex, setScanIndex] = useState<SettingsState['scanIndex']>('all')
   const [mrPass, setMrPass] = useState(false)
   const [mrFail, setMrFail] = useState(false)
   const [aiImages, setAiImages] = useState(false)
@@ -140,16 +140,16 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
   useEffect(() => {
     window.electronAPI.settingsGet('settingsPanel').then((saved) => {
       if (saved && typeof saved === 'object') {
-        const s = saved as Partial<SettingsState>
-        if (s.action && s.action !== 'move') setAction(s.action)
-        if (s.imageType) setImageType(s.imageType)
-        if (s.organize) setOrganize(s.organize)
-        if (s.duplicates) setDuplicates(s.duplicates)
-        if (s.scanIndex) setScanIndex(s.scanIndex)
+        const s = saved as Record<string, unknown>
+        if (s.action === 'copy') setAction('copy') // Never restore 'move' for safety
+        if (s.imageType === 'both' || s.imageType === 'bmp' || s.imageType === 'jpeg') setImageType(s.imageType)
+        if (s.organize === 'flat' || s.organize === 'by-machine' || s.organize === 'by-date' || s.organize === 'machine-date' || s.organize === 'date-machine' || s.organize === 'by-imei') setOrganize(s.organize)
+        if (s.duplicates === 'skip' || s.duplicates === 'overwrite') setDuplicates(s.duplicates)
+        if (s.scanIndex === 'all' || s.scanIndex === 'first_only') setScanIndex(s.scanIndex)
         if (typeof s.mrPass === 'boolean') setMrPass(s.mrPass)
         if (typeof s.mrFail === 'boolean') setMrFail(s.mrFail)
         if (typeof s.aiImages === 'boolean') setAiImages(s.aiImages)
-        if (s.destination) setDestination(s.destination)
+        if (typeof s.destination === 'string' && s.destination) setDestination(s.destination)
       }
       setLoaded(true)
     })
@@ -158,8 +158,8 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
   const handleActionChange = (value: string): void => {
     if (value === 'move') {
       setShowMoveWarning(true)
-    } else {
-      setAction(value)
+    } else if (value === 'copy') {
+      setAction('copy')
     }
   }
 
@@ -236,7 +236,7 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
                     key={opt.value}
                     className={`${styles.orgOption} ${organize === opt.value ? styles.orgOptionActive : ''}`}
                     onClick={() => {
-                      setOrganize(opt.value)
+                      setOrganize(opt.value as SettingsState['organize'])
                       setOrgOpen(false)
                     }}
                   >

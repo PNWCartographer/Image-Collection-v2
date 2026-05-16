@@ -146,8 +146,8 @@ For **MR image exports**, the same modes apply but the leaf is a `.png` file ins
 Collects **Model Recognition PASS** images — devices the AI correctly identified.
 
 - Searches `Machine/ModelRecogImages/{date}/{Brand-Model}/` folders.
-- Matches `.png` files whose filename is a 15-digit IMEI from the audit list.
-- Results show the Brand-Model folder name (e.g. `Samsung-Galaxy_S24`) in green in the results table.
+- Matches `.png` files whose filename contains a 15-digit IMEI from the audit list (format: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`).
+- Results show the Brand-Model folder name (e.g. `Apple-iPhone8`) in green in the results table.
 - **Disables standard image collection** when enabled.
 
 ### MR FAIL
@@ -247,10 +247,10 @@ NAS_ROOT/                              (e.g. Z:\)
     20260514/
     ModelRecogImages/                   MR images (searched when MR toggles are ON)
       20260515/
-        Samsung-Galaxy_S24/             Brand-Model subfolder (MR PASS)
-          350002267153742.png           IMEI.png file
+        Apple-iPhone8/                  Brand-Model subfolder (MR PASS)
+          SG-M008-075545-358627090247469-Apple-iPhone8.png
         Error-Error/                    Error subfolder (MR FAIL)
-          350024510270586.png
+          SG-M008-074837-359814715825890-Apple-iPhoneXR.png
     Bin/                                Skipped during search
   M10/
   ...
@@ -262,7 +262,7 @@ NAS_ROOT/                              (e.g. Z:\)
 - IMEI: always 15 numeric digits.
 - Scan index: integer after the underscore (`_1` = first scan, `_2` = rescan, etc.).
 - Date folders: always 8 digits in `YYYYMMDD` format.
-- MR image filenames: `{15-digit IMEI}.png`.
+- MR image filenames: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png` (IMEI is the 4th hyphen-delimited segment).
 
 ---
 

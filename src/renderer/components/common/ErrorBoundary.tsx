@@ -24,7 +24,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = (): void => {
-    this.setState({ hasError: false, error: null })
+    window.location.reload()
   }
 
   render(): ReactNode {
@@ -38,22 +38,22 @@ export default class ErrorBoundary extends Component<Props, State> {
           height: '100vh',
           gap: '16px',
           padding: '32px',
-          fontFamily: 'Inter, -apple-system, sans-serif',
-          color: '#e0e0e0',
-          background: '#1a1a2e',
+          fontFamily: 'var(--font-family, Inter, -apple-system, sans-serif)',
+          color: 'var(--text-primary, #e0e0e0)',
+          background: 'var(--bg-primary, #1a1a2e)',
           textAlign: 'center'
         }}>
           <div style={{ fontSize: '48px' }}>!</div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>
             Something went wrong
           </h2>
-          <p style={{ margin: 0, fontSize: '13px', color: '#888', maxWidth: '400px' }}>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-tertiary, #888)', maxWidth: '400px' }}>
             {this.state.error?.message || 'An unexpected error occurred.'}
           </p>
           <button
             onClick={this.handleReload}
             style={{
-              background: '#0abab5',
+              background: 'var(--accent-primary, #0abab5)',
               color: '#fff',
               border: 'none',
               borderRadius: '20px',
