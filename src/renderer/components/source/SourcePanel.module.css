@@ -216,3 +216,31 @@
   color: var(--text-tertiary);
   font-weight: var(--font-weight-semibold);
 }
+
+.ampm {
+  display: flex;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.ampmBtn {
+  background: var(--bg-input);
+  border: none;
+  padding: 6px 10px;
+  font-family: var(--font-family);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ampmBtn:first-child {
+  border-right: 1px solid var(--border-glass);
+}
+
+.ampmActive {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
