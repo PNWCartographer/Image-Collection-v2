@@ -170,7 +170,7 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
     if (loaded) {
       window.electronAPI.settingsSet('settingsPanel', settings)
     }
-  }, [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination, loaded])
+  }, [action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination, loaded, onSettingsChange])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent): void => {

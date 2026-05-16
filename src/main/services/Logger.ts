@@ -3,10 +3,10 @@ import { readdir, unlink, mkdir } from 'fs/promises'
 import { join } from 'path'
 
 export class ExportLogger {
-  private stream: WriteStream
+  private stream: WriteStream | null
   private filePath: string
 
-  constructor(stream: WriteStream, filePath: string) {
+  constructor(stream: WriteStream | null, filePath: string) {
     this.stream = stream
     this.filePath = filePath
   }
@@ -24,6 +24,7 @@ export class ExportLogger {
   }
 
   private write(level: string, msg: string): void {
+    if (!this.stream) return
     const ts = new Date().toISOString()
     this.stream.write(`[${ts}] [${level}] ${msg}\n`)
   }
@@ -33,8 +34,9 @@ export class ExportLogger {
   }
 
   async close(): Promise<void> {
+    if (!this.stream) return
     return new Promise((resolve) => {
-      this.stream.end(() => resolve())
+      this.stream!.end(() => resolve())
     })
   }
 }
@@ -45,9 +47,7 @@ export class ExportLogger {
  */
 class NoOpLogger extends ExportLogger {
   constructor() {
-    // Pass a dummy stream that does nothing
-    const devNull = createWriteStream('\\\\.\\NUL')
-    super(devNull, '')
+    super(null, '')
   }
 
   info(): void { /* no-op */ }

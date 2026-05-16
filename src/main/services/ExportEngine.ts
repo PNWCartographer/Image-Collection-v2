@@ -1,6 +1,8 @@
-import { readdir, copyFile, mkdir, rm, stat } from 'fs/promises'
+import { readdir, copyFile, mkdir, rm, stat, access } from 'fs/promises'
 import { join, extname, dirname } from 'path'
+import { constants as fsConstants } from 'fs'
 import type { ExportRequest, ExportProgress, ExportResult, SearchMatch } from '../../shared/types'
+import { formatElapsed, formatBytes } from '../../shared/utils'
 import { createExportLogger, type ExportLogger } from './Logger'
 
 // ── Concurrency tuning ──────────────────────────────────────────────
@@ -10,22 +12,24 @@ import { createExportLogger, type ExportLogger } from './Logger'
 const FOLDER_CONCURRENCY = 8
 const FILE_CONCURRENCY = 4
 
-let cancelled = false
+/** Per-operation cancellation token — avoids race conditions between overlapping calls. */
+let activeToken: { cancelled: boolean } = { cancelled: false }
 
 export function cancelExport(): void {
-  cancelled = true
+  activeToken.cancelled = true
 }
 
 // ── Pooled async concurrency (same pattern as search engine) ────────
 async function pooled<T>(
   items: T[],
   concurrency: number,
+  token: { cancelled: boolean },
   fn: (item: T) => Promise<void>
 ): Promise<void> {
   let nextIndex = 0
 
   async function worker(): Promise<void> {
-    while (nextIndex < items.length && !cancelled) {
+    while (nextIndex < items.length && !token.cancelled) {
       const idx = nextIndex++
       await fn(items[idx])
     }
@@ -103,21 +107,6 @@ function matchesImageType(fileName: string, imageType: ExportRequest['imageType'
   return true
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
-
-function formatElapsedMs(ms: number): string {
-  const seconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  if (minutes === 0) return `${secs}s`
-  return `${minutes}m ${secs}s`
-}
-
 async function folderExists(path: string): Promise<boolean> {
   try {
     const s = await stat(path)
@@ -146,18 +135,30 @@ interface CopyStats {
 /**
  * Recursively copy a folder with parallel file copies and image type
  * filtering. When aiImages is true, only copies the FD/ subfolder.
+ * Returns null if the effective source doesn't exist (FD/ missing).
  */
 async function copyFolderParallel(
   srcDir: string,
   destDir: string,
   imageType: ExportRequest['imageType'],
   aiImages: boolean,
+  token: { cancelled: boolean },
   logger: ExportLogger
-): Promise<CopyStats> {
+): Promise<CopyStats | null> {
   let filesCopied = 0
   let bytesCopied = 0
 
   const effectiveSrc = aiImages ? join(srcDir, 'FD') : srcDir
+
+  // Pre-check: if AI Images mode, verify FD/ exists before attempting copy
+  if (aiImages) {
+    try {
+      await access(effectiveSrc, fsConstants.R_OK)
+    } catch {
+      logger.warn(`  FD/ subfolder not found in ${srcDir}`)
+      return null
+    }
+  }
 
   try {
     await mkdir(destDir, { recursive: true })
@@ -168,8 +169,8 @@ async function copyFolderParallel(
     const dirs = entries.filter((e) => e.isDirectory())
 
     // ── Parallel file copy ──
-    await pooled(files, FILE_CONCURRENCY, async (file) => {
-      if (cancelled) return
+    await pooled(files, FILE_CONCURRENCY, token, async (file) => {
+      if (token.cancelled) return
       const srcPath = join(effectiveSrc, file.name)
       const dstPath = join(destDir, file.name)
 
@@ -186,16 +187,19 @@ async function copyFolderParallel(
 
     // ── Recurse into subdirectories ──
     for (const dir of dirs) {
-      if (cancelled) break
+      if (token.cancelled) break
       const sub = await copyFolderParallel(
         join(effectiveSrc, dir.name),
         join(destDir, dir.name),
         imageType,
         false, // already inside effective source
+        token,
         logger
       )
-      filesCopied += sub.filesCopied
-      bytesCopied += sub.bytesCopied
+      if (sub) {
+        filesCopied += sub.filesCopied
+        bytesCopied += sub.bytesCopied
+      }
     }
   } catch (err) {
     logger.error(`  DIR READ FAILED ${effectiveSrc}: ${err instanceof Error ? err.message : String(err)}`)
@@ -219,7 +223,8 @@ export async function exportResults(
   logsDir: string,
   onProgress: (progress: ExportProgress) => void
 ): Promise<ExportResult> {
-  cancelled = false
+  const token = { cancelled: false }
+  activeToken = token
   const startTime = Date.now()
   const logger = await createExportLogger(logsDir)
 
@@ -266,6 +271,8 @@ export async function exportResults(
     })
   }
 
+  let fdMissingCount = 0
+
   // Initial progress
   if (matches.length > 0) {
     onProgress({
@@ -281,8 +288,8 @@ export async function exportResults(
   }
 
   // ── Parallel folder export ──
-  await pooled(matches, FOLDER_CONCURRENCY, async (match) => {
-    if (cancelled) return
+  await pooled(matches, FOLDER_CONCURRENCY, token, async (match) => {
+    if (token.cancelled) return
 
     sendProgress(match)
 
@@ -355,20 +362,35 @@ export async function exportResults(
           logger.info(`  Overwriting existing destination folder`)
         }
 
-        const { filesCopied, bytesCopied } = await copyFolderParallel(
+        const copyResult = await copyFolderParallel(
           match.sourcePath,
           destPath,
           imageType,
           aiImages,
+          token,
           logger
         )
 
-        totalFilesCopied += filesCopied
-        totalBytesCopied += bytesCopied
+        if (copyResult === null) {
+          // FD/ subfolder missing in AI Images mode
+          fdMissingCount++
+          failed++
+          failedItems.push({
+            imei: match.imei,
+            sourcePath: match.sourcePath,
+            error: 'FD/ subfolder not found (AI Images mode)'
+          })
+          logger.warn(`  ✗ SKIPPED — FD/ subfolder not found`)
+          sendProgress(match)
+          return
+        }
+
+        totalFilesCopied += copyResult.filesCopied
+        totalBytesCopied += copyResult.bytesCopied
         exported++
 
         const elapsed = Date.now() - folderStart
-        logger.info(`  ✓ ${filesCopied} files  (${formatBytes(bytesCopied)})  ${elapsed}ms`)
+        logger.info(`  ✓ ${copyResult.filesCopied} files  (${formatBytes(copyResult.bytesCopied)})  ${elapsed}ms`)
 
         if (action === 'move') {
           await removeSource(match.sourcePath)
@@ -397,11 +419,11 @@ export async function exportResults(
   logger.info('═══════════════════════════════════════════════════════════')
   logger.info('  EXPORT COMPLETE')
   logger.info('═══════════════════════════════════════════════════════════')
-  logger.info(`Status     : ${cancelled ? 'CANCELLED' : 'SUCCESS'}`)
+  logger.info(`Status     : ${token.cancelled ? 'CANCELLED' : 'SUCCESS'}`)
   logger.info(`Exported   : ${exported} folders  (${totalFilesCopied} files, ${formatBytes(totalBytesCopied)})`)
   logger.info(`Skipped    : ${skipped}`)
-  logger.info(`Failed     : ${failed}`)
-  logger.info(`Total time : ${formatElapsedMs(elapsedMs)}`)
+  logger.info(`Failed     : ${failed}${fdMissingCount > 0 ? ` (${fdMissingCount} missing FD/)` : ''}`)
+  logger.info(`Total time : ${formatElapsed(elapsedMs)}`)
   logger.info(`Throughput : ${formatBytes(throughput)}/s`)
 
   if (failedItems.length > 0) {
@@ -416,7 +438,7 @@ export async function exportResults(
   await logger.close()
 
   onProgress({
-    phase: cancelled ? 'cancelled' : 'complete',
+    phase: token.cancelled ? 'cancelled' : 'complete',
     percent: 100,
     currentIMEI: '',
     currentFolder: '',

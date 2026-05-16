@@ -6,7 +6,8 @@
       "Bash(npx electron-vite *)",
       "Bash(npx tsc *)",
       "Bash(npx electron-builder *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(npm run *)"
     ]
   }
 }

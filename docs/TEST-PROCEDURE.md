@@ -73,18 +73,15 @@
 
 ---
 
-## 5. Source Panel — Date & Time Range
+## 5. Source Panel — Date Range
 
 | # | Test | Expected |
 |---|------|----------|
-| 5.1 | Click date picker for Start | Calendar opens, can select a date |
-| 5.2 | Click date picker for End | Calendar opens, can select a date |
-| 5.3 | Select a start hour from dropdown | Hour dropdown shows 00–23, selection sticks |
-| 5.4 | Select a start minute from dropdown | Minute dropdown shows 00, 05, 10... 55, selection sticks |
-| 5.5 | Select end hour and minute | Both dropdowns work independently |
-| 5.6 | Leave time blank | Time fields are optional (search should work with date only) |
-| 5.7 | Leave both date and time blank | No date range filter applied (all dates searched) |
-| 5.8 | Hover date range tooltip | Shows explanation in current language |
+| 5.1 | Click date picker for Start Date | Calendar opens, can select a date |
+| 5.2 | Click date picker for End Date | Calendar opens, can select a date |
+| 5.3 | Set start date after end date | Search still runs (searches empty range, returns no matches) |
+| 5.4 | Leave both dates blank | No date range filter applied (all dates searched) |
+| 5.5 | Hover date range tooltip | Shows explanation in current language |
 
 ---
 

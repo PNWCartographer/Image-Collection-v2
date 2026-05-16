@@ -44,7 +44,10 @@ export default function AuditPanel({ lang, onAuditLoaded }: AuditPanelProps): JS
     e.preventDefault()
     setDragOver(false)
     const file = e.dataTransfer.files[0]
-    if (file) loadFile(file.path)
+    if (file) {
+      const filePath = window.electronAPI.getFilePath(file)
+      loadFile(filePath)
+    }
   }
 
   const handleBrowse = async (): Promise<void> => {

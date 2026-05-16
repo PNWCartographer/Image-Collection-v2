@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { SearchHistoryEntry } from '../../../shared/types'
+import { formatElapsed } from '../../../shared/utils'
 import styles from './ActionButtons.module.css'
 
 interface ActionButtonsProps {
@@ -26,14 +27,6 @@ function formatTimestamp(ts: number, lang: 'en' | 'zh'): string {
   const h12 = h % 12 || 12
   if (lang === 'zh') return `${month}/${day} ${h12}:${m}${ampm}`
   return `${month}/${day} ${h12}:${m} ${ampm}`
-}
-
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  const min = Math.floor(s / 60)
-  const sec = s % 60
-  if (min === 0) return `${sec}s`
-  return `${min}m ${sec}s`
 }
 
 export default function ActionButtons({

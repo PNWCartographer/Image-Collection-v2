@@ -30,8 +30,6 @@ export interface SearchRequest {
   imeis: string[]
   dateStart?: string
   dateEnd?: string
-  timeStart?: string
-  timeEnd?: string
   scanIndexFilter: 'all' | 'first_only'
   mrPass?: boolean
   mrFail?: boolean
@@ -150,6 +148,7 @@ export interface ElectronAPI {
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
   saveFile: (defaultName: string, filters: { name: string; extensions: string[] }[], content: string) => Promise<boolean>
   openLogsFolder: () => void
+  getFilePath: (file: File) => string
   ping: () => Promise<string>
   settingsGet: (key: string) => Promise<unknown>
   settingsSet: (key: string, value: unknown) => Promise<void>

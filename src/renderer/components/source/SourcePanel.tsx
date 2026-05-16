@@ -4,20 +4,6 @@ import Tooltip from '../common/Tooltip'
 import type { FolderInfo, SourceConfig } from '../../../shared/types'
 import styles from './SourcePanel.module.css'
 
-const HOURS_12 = ['12', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11']
-const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))
-
-/** Convert 12-hour + AM/PM to 24-hour string (e.g. "02" + "PM" -> "14") */
-function to24(hour12: string, period: 'AM' | 'PM'): string {
-  let h = parseInt(hour12, 10)
-  if (period === 'AM') {
-    h = h === 12 ? 0 : h
-  } else {
-    h = h === 12 ? 12 : h + 12
-  }
-  return String(h).padStart(2, '0')
-}
-
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
@@ -36,18 +22,16 @@ const FOLDER_ZH: Record<string, string> = {
   Bin: '回收站',
 }
 
-export interface DateTimeRange {
+export interface DateRange {
   dateStart: string
   dateEnd: string
-  timeStart: string
-  timeEnd: string
 }
 
 interface SourcePanelProps {
   lang: 'en' | 'zh'
   onToggleLang: () => void
   onFoldersChange: (selected: string[], rootPath: string, sourceName: string) => void
-  onDateRangeChange?: (range: DateTimeRange) => void
+  onDateRangeChange?: (range: DateRange) => void
 }
 
 export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDateRangeChange }: SourcePanelProps): JSX.Element {
@@ -64,15 +48,9 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
   const [toggles, setToggles] = useState<Record<string, boolean>>({})
   const [scanning, setScanning] = useState(false)
 
-  // ── Date / time state ──
+  // ── Date state ──
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
-  const [hourStart, setHourStart] = useState('')
-  const [minStart, setMinStart] = useState('')
-  const [periodStart, setPeriodStart] = useState<'AM' | 'PM'>('AM')
-  const [hourEnd, setHourEnd] = useState('')
-  const [minEnd, setMinEnd] = useState('')
-  const [periodEnd, setPeriodEnd] = useState<'AM' | 'PM'>('PM')
 
   const activeSource = sources.find((s) => s.id === activeSourceId)
 
@@ -104,7 +82,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
 
   // ── Load sources on mount (with migration from old single-path format) ──
   useEffect(() => {
-    ;(async () => {
+    (async () => {
       const saved = (await window.electronAPI.settingsGet('sources')) as SourceConfig[] | null
 
       if (saved && saved.length > 0) {
@@ -137,7 +115,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
         }
       }
     })()
-  }, [])
+  }, [scanFolder])
 
   // ── Notify parent when folders / path / source change ──
   useEffect(() => {
@@ -145,14 +123,12 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       .filter(([, v]) => v)
       .map(([k]) => k)
     onFoldersChange(selected, folderPath, activeSource?.name || '')
-  }, [toggles, folderPath, activeSource?.name])
+  }, [toggles, folderPath, activeSource?.name, onFoldersChange])
 
-  // ── Notify parent when date/time range changes ──
+  // ── Notify parent when date range changes ──
   useEffect(() => {
-    const timeStart = hourStart && minStart ? `${to24(hourStart, periodStart)}:${minStart}` : ''
-    const timeEnd = hourEnd && minEnd ? `${to24(hourEnd, periodEnd)}:${minEnd}` : ''
-    onDateRangeChange?.({ dateStart, dateEnd, timeStart, timeEnd })
-  }, [dateStart, dateEnd, hourStart, minStart, periodStart, hourEnd, minEnd, periodEnd])
+    onDateRangeChange?.({ dateStart, dateEnd })
+  }, [dateStart, dateEnd, onDateRangeChange])
 
   // ── Persist toggles to active source ──
   const persistToggles = useCallback((newToggles: Record<string, boolean>) => {
@@ -434,11 +410,11 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
         </div>
       )}
 
-      {/* ── Date / time range ── */}
+      {/* ── Date range filter ── */}
       <div className={styles.dateSection}>
         <div className={styles.dateRow}>
           <span className={styles.label}>
-            {lang === 'en' ? 'Start' : '开始'}
+            {lang === 'en' ? 'Start Date' : '开始日期'}
           </span>
           <input
             type="date"
@@ -446,41 +422,10 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
             value={dateStart}
             onChange={(e) => setDateStart(e.target.value)}
           />
-          <select
-            className={styles.timeSelect}
-            value={hourStart}
-            onChange={(e) => setHourStart(e.target.value)}
-          >
-            <option value="">{lang === 'en' ? 'HH' : '时'}</option>
-            {HOURS_12.map((h) => <option key={h} value={h}>{h}</option>)}
-          </select>
-          <span className={styles.timeSep}>:</span>
-          <select
-            className={styles.timeSelect}
-            value={minStart}
-            onChange={(e) => setMinStart(e.target.value)}
-          >
-            <option value="">{lang === 'en' ? 'MM' : '分'}</option>
-            {MINUTES.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <div className={styles.ampm}>
-            <button
-              className={`${styles.ampmBtn} ${periodStart === 'AM' ? styles.ampmActive : ''}`}
-              onClick={() => setPeriodStart('AM')}
-            >
-              AM
-            </button>
-            <button
-              className={`${styles.ampmBtn} ${periodStart === 'PM' ? styles.ampmActive : ''}`}
-              onClick={() => setPeriodStart('PM')}
-            >
-              PM
-            </button>
-          </div>
         </div>
         <div className={styles.dateRow}>
           <span className={styles.label}>
-            {lang === 'en' ? 'End' : '结束'}
+            {lang === 'en' ? 'End Date' : '结束日期'}
           </span>
           <input
             type="date"
@@ -488,40 +433,9 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
             value={dateEnd}
             onChange={(e) => setDateEnd(e.target.value)}
           />
-          <select
-            className={styles.timeSelect}
-            value={hourEnd}
-            onChange={(e) => setHourEnd(e.target.value)}
-          >
-            <option value="">{lang === 'en' ? 'HH' : '时'}</option>
-            {HOURS_12.map((h) => <option key={h} value={h}>{h}</option>)}
-          </select>
-          <span className={styles.timeSep}>:</span>
-          <select
-            className={styles.timeSelect}
-            value={minEnd}
-            onChange={(e) => setMinEnd(e.target.value)}
-          >
-            <option value="">{lang === 'en' ? 'MM' : '分'}</option>
-            {MINUTES.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <div className={styles.ampm}>
-            <button
-              className={`${styles.ampmBtn} ${periodEnd === 'AM' ? styles.ampmActive : ''}`}
-              onClick={() => setPeriodEnd('AM')}
-            >
-              AM
-            </button>
-            <button
-              className={`${styles.ampmBtn} ${periodEnd === 'PM' ? styles.ampmActive : ''}`}
-              onClick={() => setPeriodEnd('PM')}
-            >
-              PM
-            </button>
-          </div>
           <Tooltip text={lang === 'en'
-            ? 'Restrict the search to date folders within the specified range. Time is optional — leave blank to search all times within the selected dates.'
-            : '将搜索限制在指定范围内的日期文件夹。时间为可选 — 留空则搜索所选日期内的所有时间。'}
+            ? 'Restrict the search to date folders within the specified range. Leave blank to search all dates.'
+            : '将搜索限制在指定范围内的日期文件夹。留空则搜索所有日期。'}
           />
         </div>
       </div>

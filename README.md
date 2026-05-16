@@ -29,7 +29,7 @@ Operators import an audit list of 15-digit IMEIs, select which NAS machine folde
 | **AI Images Only** | Export only the `FD/` subfolder (AI detection images) from matched IMEI folders |
 | **Multi-source manager** | Save and switch between multiple NAS roots; each source remembers its own folder toggles |
 | **Search history** | Last 5 searches stored with full parameter and result summaries |
-| **Date and time range filter** | Restrict searches to a specific date window with optional AM/PM time bounds |
+| **Date range filter** | Restrict searches to a specific date window (YYYYMMDD folder names) |
 | **Scan index filter** | Search all scans or first scan only (`_1` entries) |
 | **Export logging** | Detailed per-file logs with file sizes and throughput; keeps 3 most recent logs |
 | **Missing IMEI report** | View and save the list of audit IMEIs not found on the NAS |
@@ -63,12 +63,11 @@ Switch between sources with the dropdown. Each source independently remembers it
 
 On first launch, any previously saved single-path setting is automatically migrated into a named source.
 
-### Date and Time Range
+### Date Range
 
 Restrict searches to date folders within a window:
 
-- **Start / End date** — only folders whose `YYYYMMDD` name falls within this range are scanned.
-- **Start / End time** — optional hour + minute + AM/PM bounds (12-hour format). Leave blank to search all times within the selected dates.
+- **Start / End date** — only folders whose `YYYYMMDD` name falls within this range are scanned. Leave both blank to search all dates.
 
 ---
 
@@ -333,7 +332,7 @@ Use **Add/Remove Programs** (Settings > Apps > Installed apps). The uninstaller 
 
 - **AutoMode** and **Rescan Image Collection** tabs are deferred pending implementation specs from the engineering team.
 - The placeholder app icon (`resources/icon.ico`) is a generated teal square. Replace with a production icon before final distribution.
-- Time range filtering operates on folder date names only (`YYYYMMDD`). Intra-day time filtering is based on folder metadata when available.
+- Date range filtering operates on folder date names (`YYYYMMDD`). Intra-day time filtering is not supported — the NAS folder structure does not encode time.
 - Export summary report with color-coded CSV/Excel output is planned but not yet implemented.
 
 ---

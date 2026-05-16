@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import GlassCard from '../layout/GlassCard'
-import type { SearchResult, SearchMatch } from '../../../shared/types'
+import type { SearchResult } from '../../../shared/types'
+import { formatElapsed } from '../../../shared/utils'
 import styles from './ResultsPanel.module.css'
 
 type SortKey = 'imei' | 'machineName' | 'date' | 'scanIndex' | 'totalFiles'
@@ -12,9 +13,12 @@ interface ResultsPanelProps {
 }
 
 export default function ResultsPanel({ lang, result, searching }: ResultsPanelProps): JSX.Element {
+  const DISPLAY_LIMIT = 500
+
   const [sortKey, setSortKey] = useState<SortKey>('imei')
   const [sortAsc, setSortAsc] = useState(true)
   const [showMissing, setShowMissing] = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   const sortedMatches = useMemo(() => {
     if (!result) return []
@@ -43,15 +47,6 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
   const sortIndicator = (key: SortKey): string => {
     if (sortKey !== key) return ''
     return sortAsc ? ' ▲' : ' ▼'
-  }
-
-  const formatElapsed = (ms: number): string => {
-    if (ms < 1000) return `${ms}ms`
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    if (minutes === 0) return `${secs}s`
-    return `${minutes}m ${secs}s`
   }
 
   // Compute incomplete count: flag matches with files significantly below median
@@ -151,31 +146,47 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
                   </td>
                 </tr>
               ) : (
-                sortedMatches.map((match) => {
-                  const isMR = match.matchType === 'mr-pass' || match.matchType === 'mr-fail'
-                  return (
-                    <tr key={`${match.imei}-${match.machineName}-${match.date}-${match.scanIndex}-${match.matchType || 'std'}`} className={styles.tr}>
-                      <td className={styles.td}>{match.imei}</td>
-                      <td className={styles.td}>{match.machineName}</td>
-                      <td className={styles.td}>{match.date}</td>
-                      {isMR ? (
-                        <td className={`${styles.td} ${match.matchType === 'mr-pass' ? styles.mrPass : styles.mrFail}`}>
-                          {match.mrFolder}
-                        </td>
-                      ) : (
-                        <td className={styles.td}>{match.scanIndex}</td>
-                      )}
-                      <td className={styles.td}>
-                        {match.totalFiles}
-                        {!isMR && (
-                          <span className={styles.fileBreakdown}>
-                            ({match.bmpCount}b {match.jpegCount}j)
-                          </span>
+                <>
+                  {(showAll ? sortedMatches : sortedMatches.slice(0, DISPLAY_LIMIT)).map((match) => {
+                    const isMR = match.matchType === 'mr-pass' || match.matchType === 'mr-fail'
+                    return (
+                      <tr key={`${match.imei}-${match.machineName}-${match.date}-${match.scanIndex}-${match.matchType || 'std'}`} className={styles.tr}>
+                        <td className={styles.td}>{match.imei}</td>
+                        <td className={styles.td}>{match.machineName}</td>
+                        <td className={styles.td}>{match.date}</td>
+                        {isMR ? (
+                          <td className={`${styles.td} ${match.matchType === 'mr-pass' ? styles.mrPass : styles.mrFail}`}>
+                            {match.mrFolder}
+                          </td>
+                        ) : (
+                          <td className={styles.td}>{match.scanIndex}</td>
                         )}
+                        <td className={styles.td}>
+                          {match.totalFiles}
+                          {!isMR && (
+                            <span className={styles.fileBreakdown}>
+                              ({match.bmpCount}b {match.jpegCount}j)
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {!showAll && sortedMatches.length > DISPLAY_LIMIT && (
+                    <tr>
+                      <td className={styles.showAllRow} colSpan={5}>
+                        <button
+                          className={styles.showAllBtn}
+                          onClick={() => setShowAll(true)}
+                        >
+                          {lang === 'en'
+                            ? `Showing ${DISPLAY_LIMIT} of ${sortedMatches.length.toLocaleString()} — click to show all`
+                            : `显示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 点击显示全部`}
+                        </button>
                       </td>
                     </tr>
-                  )
-                })
+                  )}
+                </>
               )}
             </tbody>
           </table>

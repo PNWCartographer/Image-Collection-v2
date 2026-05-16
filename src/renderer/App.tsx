@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import TitleBar from './components/layout/TitleBar'
 import StatusBar from './components/layout/StatusBar'
 import SourcePanel from './components/source/SourcePanel'
-import type { DateTimeRange } from './components/source/SourcePanel'
+import type { DateRange } from './components/source/SourcePanel'
 import AuditPanel from './components/audit/AuditPanel'
 import SettingsPanel from './components/settings/SettingsPanel'
 import type { SettingsState } from './components/settings/SettingsPanel'
@@ -10,6 +10,7 @@ import ResultsPanel from './components/results/ResultsPanel'
 import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
 import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest, SearchHistoryEntry } from '../shared/types'
+import { formatElapsed } from '../shared/utils'
 import styles from './App.module.css'
 
 function App(): JSX.Element {
@@ -26,6 +27,7 @@ function App(): JSX.Element {
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null)
   const [exportResult, setExportResult] = useState<ExportResult | null>(null)
   const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>([])
+  const [hasDestination, setHasDestination] = useState(false)
 
   const sourceNameRef = useRef('')
 
@@ -34,8 +36,8 @@ function App(): JSX.Element {
     duplicates: 'skip', scanIndex: 'all',
     mrPass: false, mrFail: false, aiImages: false, destination: ''
   })
-  const dateRangeRef = useRef<DateTimeRange>({
-    dateStart: '', dateEnd: '', timeStart: '', timeEnd: ''
+  const dateRangeRef = useRef<DateRange>({
+    dateStart: '', dateEnd: ''
   })
 
   useEffect(() => {
@@ -96,11 +98,11 @@ function App(): JSX.Element {
     window.electronAPI.settingsSet('lang', next)
   }
 
-  const handleFoldersChange = (folders: string[], path: string, sourceName: string): void => {
+  const handleFoldersChange = useCallback((folders: string[], path: string, sourceName: string): void => {
     setSelectedFolders(folders)
     setRootPath(path)
     sourceNameRef.current = sourceName
-  }
+  }, [])
 
   const handleAuditLoaded = (result: AuditParseResult | null): void => {
     setAuditResult(result)
@@ -108,9 +110,10 @@ function App(): JSX.Element {
 
   const handleSettingsChange = useCallback((settings: SettingsState): void => {
     settingsRef.current = settings
+    setHasDestination(!!settings.destination)
   }, [])
 
-  const handleDateRangeChange = useCallback((range: DateTimeRange): void => {
+  const handleDateRangeChange = useCallback((range: DateRange): void => {
     dateRangeRef.current = range
   }, [])
 
@@ -132,8 +135,6 @@ function App(): JSX.Element {
         imeis: auditResult.validIMEIs,
         dateStart: dr.dateStart || undefined,
         dateEnd: dr.dateEnd || undefined,
-        timeStart: dr.timeStart || undefined,
-        timeEnd: dr.timeEnd || undefined,
         scanIndexFilter: settings.scanIndex as 'all' | 'first_only',
         mrPass: settings.mrPass || undefined,
         mrFail: settings.mrFail || undefined
@@ -230,14 +231,6 @@ function App(): JSX.Element {
         }
       : null
 
-  const formatElapsed = (ms: number): string => {
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    if (minutes === 0) return `${secs}s`
-    return `${minutes}m ${secs}s`
-  }
-
   let statusMsg: string
   if (exporting && exportProgress) {
     const ep = exportProgress
@@ -326,7 +319,7 @@ function App(): JSX.Element {
             onCancel={handleCancel}
             onCancelExport={handleCancelExport}
             canSearch={canSearch}
-            canExport={searchResult !== null && searchResult.matches.length > 0 && !exporting && !!settingsRef.current.destination}
+            canExport={searchResult !== null && searchResult.matches.length > 0 && !exporting && hasDestination}
             searching={searching}
             exporting={exporting}
             searchHistory={searchHistory}

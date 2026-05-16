@@ -11,22 +11,24 @@ const SKIP_FOLDERS = new Set([
 // NAS runs at ~50% IOPS capacity during production, plenty of headroom
 const CONCURRENCY = 48
 
-let cancelled = false
+/** Per-operation cancellation token — avoids race conditions between overlapping calls. */
+let activeToken: { cancelled: boolean } = { cancelled: false }
 
 export function cancelSearch(): void {
-  cancelled = true
+  activeToken.cancelled = true
 }
 
 async function pooled<T, R>(
   items: T[],
   concurrency: number,
+  token: { cancelled: boolean },
   fn: (item: T) => Promise<R>
 ): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let nextIndex = 0
 
   async function worker(): Promise<void> {
-    while (nextIndex < items.length && !cancelled) {
+    while (nextIndex < items.length && !token.cancelled) {
       const idx = nextIndex++
       results[idx] = await fn(items[idx])
     }
@@ -50,7 +52,8 @@ export async function searchIMEIs(
     return searchMRImages(request, onProgress, onMatches)
   }
 
-  cancelled = false
+  const token = { cancelled: false }
+  activeToken = token
   const startTime = Date.now()
 
   const imeiSet = new Set(request.imeis)
@@ -61,8 +64,8 @@ export async function searchIMEIs(
   type DateFolder = { machine: string; datePath: string; dateStr: string }
   const dateFolders: DateFolder[] = []
 
-  await pooled(request.selectedFolders, CONCURRENCY, async (folderName) => {
-    if (cancelled) return
+  await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
+    if (token.cancelled) return
     const machinePath = join(request.rootPath, folderName)
 
     try {
@@ -85,7 +88,7 @@ export async function searchIMEIs(
     }
   })
 
-  if (cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, onProgress)
+  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, token, onProgress)
 
   const totalFolders = dateFolders.length
   let foldersScanned = 0
@@ -120,8 +123,8 @@ export async function searchIMEIs(
   }
 
   // Phase 2: Scan date folders for IMEI matches (parallel pool)
-  await pooled(dateFolders, CONCURRENCY, async ({ machine, datePath, dateStr }) => {
-    if (cancelled) return
+  await pooled(dateFolders, CONCURRENCY, token, async ({ machine, datePath, dateStr }) => {
+    if (token.cancelled) return
 
     sendProgress(machine, dateStr)
 
@@ -131,7 +134,7 @@ export async function searchIMEIs(
       const pendingMatches: { imei: string; scanIndex: number; folderName: string; folderPath: string }[] = []
 
       for (const imeiEntry of imeiEntries) {
-        if (cancelled) break
+        if (token.cancelled) break
         if (!imeiEntry.isDirectory()) continue
 
         const parsed = parseIMEIFolder(imeiEntry.name)
@@ -150,7 +153,7 @@ export async function searchIMEIs(
       }
 
       // Count files in matched folders in parallel
-      if (pendingMatches.length > 0 && !cancelled) {
+      if (pendingMatches.length > 0 && !token.cancelled) {
         const fileCounts = await Promise.all(
           pendingMatches.map((m) => countFiles(m.folderPath))
         )
@@ -188,7 +191,7 @@ export async function searchIMEIs(
     foldersScanned++
   })
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, token, onProgress)
 }
 
 function buildResult(
@@ -197,13 +200,14 @@ function buildResult(
   foundIMEIs: Set<string>,
   startTime: number,
   foldersScanned: number,
+  token: { cancelled: boolean },
   onProgress: (progress: SearchProgress) => void
 ): SearchResult {
   const missingIMEIs = allImeis.filter((imei) => !foundIMEIs.has(imei))
   const elapsedMs = Date.now() - startTime
 
   onProgress({
-    phase: cancelled ? 'cancelled' : 'complete',
+    phase: token.cancelled ? 'cancelled' : 'complete',
     percent: 100,
     currentMachine: '',
     currentDate: '',
@@ -256,7 +260,8 @@ async function searchMRImages(
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
 ): Promise<SearchResult> {
-  cancelled = false
+  const token = { cancelled: false }
+  activeToken = token
   const startTime = Date.now()
 
   const imeiSet = new Set(request.imeis)
@@ -267,8 +272,8 @@ async function searchMRImages(
   type MRDateFolder = { machine: string; datePath: string; dateStr: string }
   const dateFolders: MRDateFolder[] = []
 
-  await pooled(request.selectedFolders, CONCURRENCY, async (folderName) => {
-    if (cancelled) return
+  await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
+    if (token.cancelled) return
     const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
 
     try {
@@ -290,7 +295,7 @@ async function searchMRImages(
     }
   })
 
-  if (cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, onProgress)
+  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, token, onProgress)
 
   const totalFolders = dateFolders.length
   let foldersScanned = 0
@@ -324,15 +329,15 @@ async function searchMRImages(
   }
 
   // Phase 2: Scan date folders for Brand-Model / Error-Error subfolders
-  await pooled(dateFolders, CONCURRENCY, async ({ machine, datePath, dateStr }) => {
-    if (cancelled) return
+  await pooled(dateFolders, CONCURRENCY, token, async ({ machine, datePath, dateStr }) => {
+    if (token.cancelled) return
     sendProgress(machine, dateStr)
 
     try {
       const subFolders = await readdir(datePath, { withFileTypes: true })
 
       for (const sub of subFolders) {
-        if (cancelled) break
+        if (token.cancelled) break
         if (!sub.isDirectory()) continue
 
         const isErrorFolder = sub.name.toLowerCase() === 'error-error'
@@ -386,7 +391,7 @@ async function searchMRImages(
     foldersScanned++
   })
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned, token, onProgress)
 }
 
 async function countFiles(folderPath: string): Promise<{ bmp: number; jpeg: number; other: number }> {
