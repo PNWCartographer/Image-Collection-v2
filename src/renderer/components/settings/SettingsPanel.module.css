@@ -179,3 +179,85 @@
 .browseBtn:hover {
   background: var(--bg-glass-hover);
 }
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: var(--bg-tooltip);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.modalIcon {
+  font-size: 36px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.modalTitle {
+  color: var(--status-red);
+  font-size: 18px;
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 12px 0;
+  letter-spacing: 1px;
+}
+
+.modalText {
+  color: var(--text-tooltip);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  margin: 0 0 24px 0;
+}
+
+.modalButtons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.modalCancel {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-xl);
+  padding: 8px 24px;
+  color: var(--text-tooltip);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.modalCancel:hover {
+  background: var(--bg-glass-hover);
+}
+
+.modalConfirm {
+  background: var(--status-red);
+  border: none;
+  border-radius: var(--radius-xl);
+  padding: 8px 24px;
+  color: #ffffff;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.modalConfirm:hover {
+  opacity: 0.85;
+}

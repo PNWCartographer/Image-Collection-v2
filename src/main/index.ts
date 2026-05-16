@@ -3,8 +3,9 @@ import { join } from 'path'
 import { scanRootFolder } from './services/FolderScanner'
 import { parseAuditFile } from './services/AuditParser'
 import { searchIMEIs, cancelSearch } from './services/IMEISearchEngine'
+import { exportResults, cancelExport } from './services/ExportEngine'
 import { getSetting, setSetting } from './services/SettingsStore'
-import type { SearchRequest } from '../shared/types'
+import type { SearchRequest, ExportRequest } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -87,6 +88,19 @@ function registerIPC(): void {
 
   ipcMain.on('search:cancel', () => {
     cancelSearch()
+  })
+
+  ipcMain.handle('export:start', async (_event, request: ExportRequest) => {
+    return exportResults(
+      request,
+      (progress) => {
+        mainWindow?.webContents.send('export:progress', progress)
+      }
+    )
+  })
+
+  ipcMain.on('export:cancel', () => {
+    cancelExport()
   })
 
   ipcMain.handle('settings:get', (_event, key: string) => {

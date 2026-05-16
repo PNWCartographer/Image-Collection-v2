@@ -9,7 +9,7 @@ import type { SettingsState } from './components/settings/SettingsPanel'
 import ResultsPanel from './components/results/ResultsPanel'
 import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
-import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch } from '../shared/types'
+import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest } from '../shared/types'
 import styles from './App.module.css'
 
 function App(): JSX.Element {
@@ -22,6 +22,9 @@ function App(): JSX.Element {
   const [streamingMatches, setStreamingMatches] = useState<SearchMatch[]>([])
   const [searching, setSearching] = useState(false)
   const [progress, setProgress] = useState<SearchProgress | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null)
+  const [exportResult, setExportResult] = useState<ExportResult | null>(null)
 
   const settingsRef = useRef<SettingsState>({
     action: 'copy', imageType: 'both', organize: 'flat',
@@ -61,6 +64,14 @@ function App(): JSX.Element {
   useEffect(() => {
     const unsubscribe = window.electronAPI.onSearchMatches((matches) => {
       setStreamingMatches((prev) => [...prev, ...matches])
+    })
+    return unsubscribe
+  }, [])
+
+  // Subscribe to export progress events
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onExportProgress((prog) => {
+      setExportProgress(prog)
     })
     return unsubscribe
   }, [])
@@ -129,14 +140,49 @@ function App(): JSX.Element {
     window.electronAPI.cancelSearch()
   }
 
+  const handleExport = async (): Promise<void> => {
+    if (!searchResult || searchResult.matches.length === 0) return
+
+    const settings = settingsRef.current
+    if (!settings.destination) return
+
+    setExporting(true)
+    setExportResult(null)
+    setExportProgress(null)
+
+    try {
+      const request: ExportRequest = {
+        matches: searchResult.matches,
+        destination: settings.destination,
+        action: settings.action as 'copy' | 'move',
+        imageType: settings.imageType as 'both' | 'bmp' | 'jpeg',
+        organize: settings.organize as ExportRequest['organize'],
+        duplicates: settings.duplicates as 'skip' | 'overwrite',
+        aiImages: settings.aiImages
+      }
+      const result = await window.electronAPI.exportResults(request)
+      setExportResult(result)
+    } catch (err) {
+      console.error('Export failed:', err)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleCancelExport = (): void => {
+    window.electronAPI.cancelExport()
+  }
+
   const handleClear = (): void => {
     setAuditResult(null)
     setSearchResult(null)
     setStreamingMatches([])
     setProgress(null)
+    setExportResult(null)
+    setExportProgress(null)
   }
 
-  const canSearch = selectedFolders.length > 0 && (auditResult?.validIMEIs.length ?? 0) > 0 && !searching
+  const canSearch = selectedFolders.length > 0 && (auditResult?.validIMEIs.length ?? 0) > 0 && !searching && !exporting
 
   // Use streaming matches while searching, final result after complete
   const displayResult: SearchResult | null = searchResult
@@ -160,7 +206,18 @@ function App(): JSX.Element {
   }
 
   let statusMsg: string
-  if (searching && progress) {
+  if (exporting && exportProgress) {
+    const ep = exportProgress
+    statusMsg = lang === 'en'
+      ? `Exporting ${ep.currentIMEI} · ${ep.exported} exported · ${ep.skipped} skipped`
+      : `正在导出 ${ep.currentIMEI} · ${ep.exported} 已导出 · ${ep.skipped} 已跳过`
+  } else if (exporting) {
+    statusMsg = lang === 'en' ? 'Preparing export...' : '正在准备导出...'
+  } else if (exportResult) {
+    statusMsg = lang === 'en'
+      ? `Export complete · ${exportResult.exported} exported · ${exportResult.skipped} skipped · ${exportResult.failed} failed · ${formatElapsed(exportResult.elapsedMs)}`
+      : `导出完成 · ${exportResult.exported} 已导出 · ${exportResult.skipped} 已跳过 · ${exportResult.failed} 失败 · ${formatElapsed(exportResult.elapsedMs)}`
+  } else if (searching && progress) {
     statusMsg = lang === 'en'
       ? `Searching ${progress.currentMachine}/${progress.currentDate} · ${progress.matchesSoFar} matches`
       : `正在搜索 ${progress.currentMachine}/${progress.currentDate} · ${progress.matchesSoFar} 个匹配`
@@ -177,18 +234,36 @@ function App(): JSX.Element {
     statusMsg = lang === 'en' ? 'Ready' : '就绪'
   }
 
-  const progressVisible = searching
-  const progressPercent = progress?.percent ?? 0
-  const progressLabel = progress
-    ? (lang === 'en'
-        ? `Scanning ${progress.currentMachine}/${progress.currentDate}`
-        : `正在扫描 ${progress.currentMachine}/${progress.currentDate}`)
-    : (lang === 'en' ? 'Preparing...' : '准备中...')
-  const progressSublabel = progress
-    ? (lang === 'en'
-        ? `${progress.foldersScanned}/${progress.totalFolders} folders · ${progress.matchesSoFar} matches`
-        : `${progress.foldersScanned}/${progress.totalFolders} 个文件夹 · ${progress.matchesSoFar} 个匹配`)
-    : undefined
+  const progressVisible = searching || exporting
+  let progressPercent: number
+  let progressLabel: string
+  let progressSublabel: string | undefined
+
+  if (exporting) {
+    progressPercent = exportProgress?.percent ?? 0
+    progressLabel = exportProgress
+      ? (lang === 'en'
+          ? `Exporting ${exportProgress.currentFolder}`
+          : `正在导出 ${exportProgress.currentFolder}`)
+      : (lang === 'en' ? 'Preparing export...' : '准备导出中...')
+    progressSublabel = exportProgress
+      ? (lang === 'en'
+          ? `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} items · ${exportProgress.exported} exported`
+          : `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 项 · ${exportProgress.exported} 已导出`)
+      : undefined
+  } else {
+    progressPercent = progress?.percent ?? 0
+    progressLabel = progress
+      ? (lang === 'en'
+          ? `Scanning ${progress.currentMachine}/${progress.currentDate}`
+          : `正在扫描 ${progress.currentMachine}/${progress.currentDate}`)
+      : (lang === 'en' ? 'Preparing...' : '准备中...')
+    progressSublabel = progress
+      ? (lang === 'en'
+          ? `${progress.foldersScanned}/${progress.totalFolders} folders · ${progress.matchesSoFar} matches`
+          : `${progress.foldersScanned}/${progress.totalFolders} 个文件夹 · ${progress.matchesSoFar} 个匹配`)
+      : undefined
+  }
 
   return (
     <div className={styles.app}>
@@ -213,12 +288,14 @@ function App(): JSX.Element {
           />
           <ActionButtons
             onSearch={handleSearch}
-            onExport={() => {}}
+            onExport={handleExport}
             onClear={handleClear}
             onCancel={handleCancel}
+            onCancelExport={handleCancelExport}
             canSearch={canSearch}
-            canExport={searchResult !== null && searchResult.matches.length > 0}
+            canExport={searchResult !== null && searchResult.matches.length > 0 && !exporting && !!settingsRef.current.destination}
             searching={searching}
+            exporting={exporting}
             lang={lang}
           />
         </div>

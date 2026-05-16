@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import GlassCard from '../layout/GlassCard'
 import Select from '../common/Select'
 import Toggle from '../common/Toggle'
@@ -131,7 +132,16 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
   const [mrFail, setMrFail] = useState(false)
   const [aiImages, setAiImages] = useState(false)
   const [destination, setDestination] = useState('')
+  const [showMoveWarning, setShowMoveWarning] = useState(false)
   const orgRef = useRef<HTMLDivElement>(null)
+
+  const handleActionChange = (value: string): void => {
+    if (value === 'move') {
+      setShowMoveWarning(true)
+    } else {
+      setAction(value)
+    }
+  }
 
   useEffect(() => {
     onSettingsChange?.({ action, imageType, organize, duplicates, scanIndex, mrPass, mrFail, aiImages, destination })
@@ -162,7 +172,7 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
           <Select
             label={lang === 'en' ? 'Action' : '操作'}
             value={action}
-            onChange={setAction}
+            onChange={handleActionChange}
             options={[
               { value: 'copy', label: lang === 'en' ? 'Copy' : '复制' },
               { value: 'move', label: lang === 'en' ? 'Move' : '移动' }
@@ -274,6 +284,40 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
           </button>
         </div>
       </div>
+
+      {showMoveWarning && createPortal(
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <span className={styles.modalIcon}>⚠️</span>
+            <h3 className={styles.modalTitle}>
+              {lang === 'en' ? 'WARNING' : '警告'}
+            </h3>
+            <p className={styles.modalText}>
+              {lang === 'en'
+                ? 'This will MOVE data off the NAS. Source files will be permanently deleted after transfer. Use at your own risk!'
+                : '此操作将从NAS移动数据。源文件将在传输后被永久删除。风险自负！'}
+            </p>
+            <div className={styles.modalButtons}>
+              <button
+                className={styles.modalCancel}
+                onClick={() => setShowMoveWarning(false)}
+              >
+                {lang === 'en' ? 'Cancel' : '取消'}
+              </button>
+              <button
+                className={styles.modalConfirm}
+                onClick={() => {
+                  setAction('move')
+                  setShowMoveWarning(false)
+                }}
+              >
+                {lang === 'en' ? 'I Understand, Use Move' : '我了解风险，使用移动'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </GlassCard>
   )
 }

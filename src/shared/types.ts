@@ -66,6 +66,36 @@ export interface SearchResult {
   folderCount: number
 }
 
+export interface ExportRequest {
+  matches: SearchMatch[]
+  destination: string
+  action: 'copy' | 'move'
+  imageType: 'both' | 'bmp' | 'jpeg'
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei'
+  duplicates: 'skip' | 'overwrite'
+  aiImages: boolean
+}
+
+export interface ExportProgress {
+  phase: 'exporting' | 'complete' | 'cancelled' | 'error'
+  percent: number
+  currentIMEI: string
+  currentFolder: string
+  exported: number
+  skipped: number
+  failed: number
+  totalItems: number
+}
+
+export interface ExportResult {
+  exported: number
+  skipped: number
+  failed: number
+  failedItems: { imei: string; sourcePath: string; error: string }[]
+  elapsedMs: number
+  destinationPath: string
+}
+
 export interface AppSettings {
   sources: {
     id: string
@@ -88,6 +118,9 @@ export interface ElectronAPI {
   cancelSearch: () => void
   onSearchProgress: (callback: (progress: SearchProgress) => void) => () => void
   onSearchMatches: (callback: (matches: SearchMatch[]) => void) => () => void
+  exportResults: (request: ExportRequest) => Promise<ExportResult>
+  cancelExport: () => void
+  onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
   ping: () => Promise<string>
   settingsGet: (key: string) => Promise<unknown>
   settingsSet: (key: string, value: unknown) => Promise<void>

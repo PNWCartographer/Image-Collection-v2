@@ -22,6 +22,15 @@ const api: ElectronAPI = {
     ipcRenderer.on('search:matches', handler)
     return () => ipcRenderer.removeListener('search:matches', handler)
   },
+  exportResults: (request) => ipcRenderer.invoke('export:start', request),
+  cancelExport: () => ipcRenderer.send('export:cancel'),
+  onExportProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: unknown): void => {
+      callback(progress as Parameters<typeof callback>[0])
+    }
+    ipcRenderer.on('export:progress', handler)
+    return () => ipcRenderer.removeListener('export:progress', handler)
+  },
   ping: () => ipcRenderer.invoke('ping'),
   settingsGet: (key) => ipcRenderer.invoke('settings:get', key),
   settingsSet: (key, value) => ipcRenderer.invoke('settings:set', key, value),
