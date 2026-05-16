@@ -3,14 +3,20 @@ productName: Image Collection v2
 directories:
   output: release
   buildResources: resources
+
+# ── Windows ──
 win:
   target:
     - target: nsis
       arch:
         - x64
+  icon: resources/icon.ico
+
+# ── NSIS Installer ──
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: false
+  allowElevation: true
   installerIcon: resources/icon.ico
   uninstallerIcon: resources/icon.ico
   createDesktopShortcut: true
@@ -18,5 +24,13 @@ nsis:
   shortcutName: Image Collection v2
   perMachine: true
   deleteAppDataOnUninstall: true
+  runAfterFinish: true
+
+# ── App contents ──
 files:
   - out/**/*
+
+# Make icon available at runtime for BrowserWindow
+extraResources:
+  - from: resources/icon.ico
+    to: icon.ico

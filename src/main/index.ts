@@ -10,6 +10,13 @@ import type { SearchRequest, ExportRequest } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 
+function getIconPath(): string {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'icon.ico')
+  }
+  return join(__dirname, '../../resources/icon.ico')
+}
+
 function createWindow(): void {
   const saved = getSetting('windowBounds') as
     | { x: number; y: number; width: number; height: number }
@@ -23,6 +30,7 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     frame: false,
+    icon: getIconPath(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

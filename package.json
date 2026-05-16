@@ -13,7 +13,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "typecheck:main": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:renderer": "tsc --noEmit -p tsconfig.web.json",
-    "typecheck": "npm run typecheck:main && npm run typecheck:renderer"
+    "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
+    "pack": "electron-vite build && electron-builder --dir",
+    "dist": "electron-vite build && electron-builder"
   },
   "dependencies": {
     "csv-parse": "^5.6.0",
