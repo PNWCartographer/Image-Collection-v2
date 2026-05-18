@@ -7,10 +7,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "preview": "electron-vite preview",
-    "start": "electron-vite dev",
-    "lint": "eslint src --ext .ts,.tsx",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{json,yml}\"",
     "typecheck:main": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:renderer": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:main && npm run typecheck:renderer",

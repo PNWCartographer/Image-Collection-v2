@@ -1,6 +1,5 @@
-import { readdir, copyFile, mkdir, rm, stat, access } from 'fs/promises'
+import { readdir, copyFile, mkdir, rm, stat } from 'fs/promises'
 import { join, extname, dirname } from 'path'
-import { constants as fsConstants } from 'fs'
 import type { ExportRequest, ExportProgress, ExportResult, SearchMatch } from '../../shared/types'
 import { formatElapsed, formatBytes, PROGRESS_THROTTLE_MS } from '../../shared/utils'
 import { pooledVoid, type CancelToken } from '../../shared/pool'
@@ -32,6 +31,11 @@ export function cancelExport(): void {
  * date-machine:  dest/YYYYMMDD/Machine/IMEI_index/
  * by-imei:       dest/IMEI/Machine_YYYYMMDD_index/
  */
+/** Extract a human-readable message from an unknown error. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
   switch (organize) {
     case 'flat':
@@ -46,6 +50,10 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
       return join(dest, match.date, match.machineName, match.folderName)
     case 'by-imei':
       return join(dest, match.imei, `${match.machineName}_${match.date}_${match.scanIndex}`)
+    default: {
+      const _exhaustive: never = organize
+      return _exhaustive
+    }
   }
 }
 
@@ -75,6 +83,10 @@ function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportR
       return join(dest, match.machineName, match.date, match.imei, `${mrTag}.png`)
     case 'date-machine':
       return join(dest, match.date, match.machineName, match.imei, `${mrTag}.png`)
+    default: {
+      const _exhaustive: never = organize
+      return _exhaustive
+    }
   }
 }
 
@@ -124,9 +136,8 @@ async function copyFolderParallel(
 
   // Pre-check: if AI Images mode, verify FD/ exists before attempting copy
   if (aiImages) {
-    try {
-      await access(effectiveSrc, fsConstants.R_OK)
-    } catch {
+    const fdExists = await pathExists(effectiveSrc, 'directory')
+    if (!fdExists) {
       logger.warn(`  FD/ subfolder not found in ${srcDir}`)
       return null
     }
@@ -153,7 +164,7 @@ async function copyFolderParallel(
         bytesCopied += fileStat.size
         logger.info(`    ${file.name}  (${formatBytes(fileStat.size)})`)
       } catch (err) {
-        logger.error(`    COPY FAILED ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+        logger.error(`    COPY FAILED ${file.name}: ${errorMessage(err)}`)
       }
     })
 
@@ -174,7 +185,7 @@ async function copyFolderParallel(
       }
     }
   } catch (err) {
-    logger.error(`  DIR READ FAILED ${effectiveSrc}: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(`  DIR READ FAILED ${effectiveSrc}: ${errorMessage(err)}`)
   }
 
   return { filesCopied, bytesCopied }
@@ -196,7 +207,7 @@ function recordFailure(
   failedItems: ExportResult['failedItems'],
   logger: ExportLogger
 ): void {
-  const errMsg = err instanceof Error ? err.message : String(err)
+  const errMsg = errorMessage(err)
   failedItems.push({ imei: match.imei, sourcePath: match.sourcePath, error: errMsg })
   logger.error(`  ✗ FAILED — ${errMsg}`)
 }

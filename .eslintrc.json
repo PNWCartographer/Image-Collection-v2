@@ -1,8 +1,6 @@
 {
   "root": true,
   "env": {
-    "browser": true,
-    "node": true,
     "es2022": true
   },
   "parser": "@typescript-eslint/parser",
@@ -20,5 +18,15 @@
   },
   "rules": {
     "react/react-in-jsx-scope": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/main/**/*.ts"],
+      "env": { "node": true }
+    },
+    {
+      "files": ["src/renderer/**/*.{ts,tsx}"],
+      "env": { "browser": true }
+    }
+  ]
 }

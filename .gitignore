@@ -3,15 +3,12 @@ node_modules/
 
 # Build output
 dist/
-dist-electron/
 out/
 build/
 release/
 
 # Vite
 .vite/
-vite.config.ts.timestamp-*
-vite.config.js.timestamp-*
 
 # TypeScript
 *.tsbuildinfo
@@ -57,7 +54,6 @@ Desktop.ini
 .eslintcache
 .stylelintcache
 .cache/
-.parcel-cache/
 
 # npm
 .npm

@@ -34,7 +34,6 @@ const api: ElectronAPI = {
   saveFile: (defaultName, filters, content) => ipcRenderer.invoke('dialog:save-file', defaultName, filters, content),
   openLogsFolder: () => ipcRenderer.send('logs:open-folder'),
   getFilePath: (file: File) => webUtils.getPathForFile(file),
-  ping: () => ipcRenderer.invoke('ping'),
   settingsGet: (key) => ipcRenderer.invoke('settings:get', key),
   settingsSet: (key, value) => ipcRenderer.invoke('settings:set', key, value),
   windowMinimize: () => ipcRenderer.send('window:minimize'),

@@ -1,7 +1,6 @@
 export interface FolderInfo {
   name: string
   path: string
-  isDateFolder: boolean
   isMachineFolder: boolean
 }
 
@@ -66,8 +65,8 @@ export interface SearchMatch {
   jpegCount: number
   otherCount: number
   totalFiles: number
-  /** 'standard' for normal IMEI folder matches, 'mr-pass'/'mr-fail' for ModelRecogImages */
-  matchType?: 'standard' | 'mr-pass' | 'mr-fail'
+  /** Set only for ModelRecogImages matches. Undefined for standard IMEI folder matches. */
+  matchType?: 'mr-pass' | 'mr-fail'
   /** Brand-Model folder name (MR PASS) or 'Error-Error' (MR FAIL) */
   mrFolder?: string
 }
@@ -87,7 +86,6 @@ export interface SearchResult {
   missingIMEIs: string[]
   totalSearched: number
   elapsedMs: number
-  folderCount: number
 }
 
 export interface ExportRequest {
@@ -101,7 +99,7 @@ export interface ExportRequest {
 }
 
 export interface ExportProgress {
-  phase: 'exporting' | 'complete' | 'cancelled' | 'error'
+  phase: 'exporting' | 'complete' | 'cancelled'
   percent: number
   currentIMEI: string
   currentFolder: string
@@ -161,7 +159,7 @@ export interface ElectronAPI {
   saveFile: (defaultName: string, filters: { name: string; extensions: string[] }[], content: string) => Promise<boolean>
   openLogsFolder: () => void
   getFilePath: (file: File) => string
-  ping: () => Promise<string>
+
   settingsGet: (key: string) => Promise<unknown>
   settingsSet: (key: string, value: unknown) => Promise<void>
   windowMinimize: () => void

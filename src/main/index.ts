@@ -53,8 +53,6 @@ function createWindow(): void {
 }
 
 function registerIPC(): void {
-  ipcMain.handle('ping', () => 'pong')
-
   ipcMain.handle('dialog:open-folder', async () => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {

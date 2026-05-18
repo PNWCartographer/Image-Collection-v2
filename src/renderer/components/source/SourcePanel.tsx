@@ -271,27 +271,31 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
     }
   }
 
+  /** Ensure a source exists for the given path, creating one if needed. */
+  const ensureSource = (path: string): void => {
+    if (activeSourceId) {
+      persistSourcePath(path)
+    } else {
+      const newSource: SourceConfig = {
+        id: generateId(),
+        name: inferSourceName(path),
+        rootPath: path,
+        folderToggles: {}
+      }
+      const updated = [...sources, newSource]
+      setSources(updated)
+      setActiveSourceId(newSource.id)
+      window.electronAPI.settingsSet('sources', updated)
+      window.electronAPI.settingsSet('activeSourceId', newSource.id)
+    }
+  }
+
   // ── Browse / manual path ──
   const handleBrowse = async (): Promise<void> => {
     const path = await window.electronAPI.openFolderDialog()
     if (path) {
       setFolderPath(path)
-      if (activeSourceId) {
-        persistSourcePath(path)
-      } else {
-        // First-time use: auto-create a default source so path persists across sessions
-        const newSource: SourceConfig = {
-          id: generateId(),
-          name: inferSourceName(path),
-          rootPath: path,
-          folderToggles: {}
-        }
-        const updated = [...sources, newSource]
-        setSources(updated)
-        setActiveSourceId(newSource.id)
-        window.electronAPI.settingsSet('sources', updated)
-        window.electronAPI.settingsSet('activeSourceId', newSource.id)
-      }
+      ensureSource(path)
       scanFolder(path)
     }
   }
@@ -304,22 +308,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
 
   const handlePathSubmit = (e: React.KeyboardEvent): void => {
     if (e.key === 'Enter' && folderPath) {
-      if (activeSourceId) {
-        persistSourcePath(folderPath)
-      } else {
-        // First-time use: auto-create a default source so path persists across sessions
-        const newSource: SourceConfig = {
-          id: generateId(),
-          name: inferSourceName(folderPath),
-          rootPath: folderPath,
-          folderToggles: {}
-        }
-        const updated = [...sources, newSource]
-        setSources(updated)
-        setActiveSourceId(newSource.id)
-        window.electronAPI.settingsSet('sources', updated)
-        window.electronAPI.settingsSet('activeSourceId', newSource.id)
-      }
+      ensureSource(folderPath)
       scanFolder(folderPath)
     }
   }

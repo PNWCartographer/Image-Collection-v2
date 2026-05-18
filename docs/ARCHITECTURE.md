@@ -85,7 +85,7 @@ Parses audit files into arrays of validated IMEI strings.
 
 ```typescript
 interface AuditParseResult {
-  format: 'csv' | 'xlsx' | 'xls' | 'txt';
+  format: 'csv' | 'xlsx' | 'xls' | 'txt' | 'unknown';
   totalRows: number;
   validIMEIs: string[];       // deduplicated 15-digit strings
   invalidEntries: {
@@ -185,6 +185,42 @@ interface SearchResult {
 - Computed via `useMemo`: calculate median file count across all matches
 - Flag matches with file count < 50% of median as incomplete (orange dot in UI)
 
+### 3.3.1 Smart Search (Targeted Search Path)
+
+When the audit file contains machine and/or date columns, the AuditParser populates `hints` and `hintMeta` on the parse result. The renderer passes these to the search engine via `SearchRequest.hints` and `SearchRequest.smartSearch`.
+
+```typescript
+interface AuditHint {
+  machine?: string   // Normalized to NAS folder name, e.g. "M8", "M10"
+  date?: string      // Normalized to YYYYMMDD format
+}
+
+interface HintDetectionMeta {
+  machineColumn: string | null      // Original header name, null if not detected
+  dateColumn: string | null         // Original header name, null if not detected
+  machineValidCount: number         // How many rows had a parseable machine value
+  dateValidCount: number            // How many rows had a parseable date value
+  totalHintedRows: number           // Total data rows examined
+  dateFormatGuess: string | null    // Detected date format, e.g. "YYYY-MM-DD", "MM/DD/YYYY"
+}
+
+// On SearchRequest:
+//   hints?: Record<string, AuditHint>   — IMEI → hint mapping
+//   smartSearch?: boolean               — enables targeted search when true
+```
+
+**Targeted search algorithm** (when `smartSearch` is true and `hints` are available):
+
+1. **Full hints** (machine + date): Go directly to `{rootPath}/{machine}/{date}/` instead of scanning all folders. This skips Phase 1 discovery entirely for hinted IMEIs.
+2. **Machine-only hints**: Run a narrowed broad scan constrained to a single machine folder per group of IMEIs.
+3. **No-hint fallback**: IMEIs without usable hints fall back to the standard full broad scan across all selected folders.
+
+Smart Search also drives UI behavior in the Source panel:
+- **Auto-select machine folders**: When hints reference specific machines, those folders are automatically toggled on in the folder grid.
+- **Auto-fill date range**: When hints contain date values, the date range filter is pre-populated with the min/max dates from the hints.
+
+The same targeted approach applies to MR mode — when hints have both machine and date, the engine goes directly to `{machine}/ModelRecogImages/{date}/` instead of discovering all date folders.
+
 ### 3.4 ExportEngine
 
 Handles the actual file copy/move operations with progress tracking. File: `src/main/services/ExportEngine.ts`.
@@ -240,9 +276,9 @@ by-imei:        dest/{IMEI}/{machine}_{date}_{index}/
 
 Export logging with automatic rotation. File: `src/main/services/Logger.ts`.
 
-- Generates timestamped log files in `%APPDATA%/image-collection-v2/logs/`
+- Generates timestamped log files in `%APPDATA%/Image Collection v2/logs/`
 - Keeps the 3 most recent log files, rotates older ones
-- `NoOpLogger` variant for testing (no file I/O)
+- Falls back to `ExportLogger(null, '')` (a no-op logger with no file I/O) when log file creation fails
 
 ### 3.6 Settings Store
 
@@ -250,11 +286,22 @@ Uses `electron-store` for typed settings access via generic `settingsGet`/`setti
 
 Settings are stored per-key (not a single monolithic object):
 - `theme`: `'dark' | 'light'`
-- `lang`: `'en' | 'zh'`
+- `lang`: `'en' | 'zh-TW' | 'zh-CN'`
 - `settingsPanel`: All SettingsPanel state (action, imageType, organize, etc.)
 - `searchHistory`: Last 5 search entries
-- `sources`: Multi-source configurations with per-source folder toggles
+- `sources`: Multi-source configurations with per-source folder toggles (array of `SourceConfig`)
 - Window bounds saved/restored by Electron main process
+
+```typescript
+interface SourceConfig {
+  id: string                              // Unique identifier (generated via generateId())
+  name: string                            // User-visible label
+  rootPath: string                        // Absolute path to the NAS root
+  folderToggles: Record<string, boolean>  // Per-folder on/off state, keyed by folder name
+}
+```
+
+The `sources` setting stores an array of `SourceConfig` objects. The SourcePanel's `SourceSwitcher` dropdown lets users add, rename, remove, and switch between sources. Each source persists its own root path and folder toggle state independently.
 
 ---
 
@@ -372,15 +419,19 @@ image-collection-v2/
 │   │           └── Tooltip.tsx + .module.css
 │   └── shared/                    # Shared between main and renderer
 │       ├── types.ts               # All TypeScript interfaces
-│       ├── utils.ts               # formatElapsed, formatBytes
-│       └── pool.ts                # Concurrent worker pool
+│       ├── utils.ts               # formatElapsed, formatBytes, generateId
+│       ├── pool.ts                # Concurrent worker pool
+│       └── i18n.ts                # Translation strings (en, zh-TW, zh-CN)
 ├── package.json
 ├── tsconfig.node.json             # Main process TypeScript config
 ├── tsconfig.web.json              # Renderer TypeScript config
 ├── electron.vite.config.ts
 ├── electron-builder.yml
 ├── .gitignore
-└── README.md
+├── .prettierrc
+├── README.md
+├── README.zh-TW.md
+└── README.zh-CN.md
 ```
 
 ---

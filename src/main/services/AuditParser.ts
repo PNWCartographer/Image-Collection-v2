@@ -3,8 +3,7 @@ import { parse as csvParse } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
 import { basename, extname } from 'path'
 import type { AuditParseResult, AuditHint, HintDetectionMeta } from '../../shared/types'
-
-const IMEI_REGEX = /^\d{15}$/
+import { IMEI_REGEX, DATE_FOLDER_REGEX } from '../../shared/utils'
 
 // ── Format detection ───────────────────────────────────────────────
 
@@ -79,7 +78,7 @@ function normalizeDate(raw: string, ambiguousOrder: DateOrder): string | null {
   const dateOnly = trimmed.split(/[\sT]+/)[0]
 
   // YYYYMMDD (no separators)
-  if (/^\d{8}$/.test(dateOnly)) {
+  if (DATE_FOLDER_REGEX.test(dateOnly)) {
     const y = parseInt(dateOnly.substring(0, 4), 10)
     const m = parseInt(dateOnly.substring(4, 6), 10)
     const d = parseInt(dateOnly.substring(6, 8), 10)
@@ -166,7 +165,7 @@ function detectDateOrder(values: string[]): DateOrder {
 function describeDateFormat(values: string[], order: DateOrder): string | null {
   for (const raw of values) {
     const dateOnly = raw.trim().split(/[\sT]+/)[0]
-    if (/^\d{8}$/.test(dateOnly)) return 'YYYYMMDD'
+    if (DATE_FOLDER_REGEX.test(dateOnly)) return 'YYYYMMDD'
     if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(dateOnly)) {
       return dateOnly.includes('/') ? 'YYYY/MM/DD' : 'YYYY-MM-DD'
     }

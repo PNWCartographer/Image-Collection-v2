@@ -11,7 +11,6 @@ export async function scanRootFolder(rootPath: string): Promise<FolderScanResult
     .map((entry) => ({
       name: entry.name,
       path: join(rootPath, entry.name),
-      isDateFolder: /^\d{8}$/.test(entry.name),
       isMachineFolder: /^M\d+$/i.test(entry.name)
     }))
     .sort((a, b) => {

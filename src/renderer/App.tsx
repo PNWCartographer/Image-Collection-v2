@@ -373,8 +373,7 @@ function App(): JSX.Element {
           matches: streamingMatches,
           missingIMEIs: [],
           totalSearched: 0,
-          elapsedMs: 0,
-          folderCount: 0
+          elapsedMs: 0
         }
       : null
 

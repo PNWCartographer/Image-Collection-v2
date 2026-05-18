@@ -1,6 +1,12 @@
 /**
- * Shared utility functions used across main and renderer processes.
+ * Shared utility functions and constants used across main and renderer processes.
  */
+
+/** 15-digit IMEI pattern. */
+export const IMEI_REGEX = /^\d{15}$/
+
+/** 8-digit YYYYMMDD date folder pattern. */
+export const DATE_FOLDER_REGEX = /^\d{8}$/
 
 /** IPC progress throttle — max one event per this many ms. */
 export const PROGRESS_THROTTLE_MS = 120
