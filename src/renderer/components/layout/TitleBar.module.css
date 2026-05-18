@@ -69,6 +69,10 @@
   background: var(--bg-glass-hover);
 }
 
+.maxBtn {
+  font-size: 10px;
+}
+
 .closeBtn:hover {
   background: var(--status-red);
   color: var(--text-on-accent);

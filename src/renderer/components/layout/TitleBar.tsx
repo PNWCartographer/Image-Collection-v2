@@ -25,7 +25,7 @@ export default function TitleBar({ theme, lang, onToggleTheme }: TitleBarProps):
           ─
         </button>
         <button
-          className={styles.controlBtn}
+          className={`${styles.controlBtn} ${styles.maxBtn}`}
           onClick={() => window.electronAPI.windowMaximize()}
           title={t(lang, 'Maximize', '最大化', '最大化')}
         >
