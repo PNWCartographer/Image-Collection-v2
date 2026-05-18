@@ -1,5 +1,7 @@
 # Image Collection v2
 
+English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
+
 Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme.
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which NAS machine folders to search, and export matched image folders to a local destination with configurable organization.
@@ -296,6 +298,12 @@ History persists across sessions.
 ## Theme
 
 Toggle between **Dark** and **Light** mode using the sun/moon button in the title bar. Both themes use the Liquid Glass design language with translucent surfaces, blur effects, and smooth transitions. The preference persists across sessions.
+
+---
+
+## Language
+
+Click the language button in the Source panel header to cycle through **English → 繁體中文 (Traditional Chinese) → 简体中文 (Simplified Chinese)**. The button label shows the next language in the cycle. All panels, tooltips, status messages, and dialogs update immediately. The preference persists across sessions.
 
 ---
 
