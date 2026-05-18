@@ -105,6 +105,7 @@ function App(): JSX.Element {
   const [exportResult, setExportResult] = useState<ExportResult | null>(null)
   const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>([])
   const [hasDestination, setHasDestination] = useState(false)
+  const [smartSearch, setSmartSearch] = useState(true)
 
   const sourceNameRef = useRef('')
   const abortedRef = useRef(false)
@@ -220,6 +221,7 @@ function App(): JSX.Element {
     const settings = settingsRef.current
 
     try {
+      const useSmartSearch = smartSearch && !!auditResult.hints && Object.keys(auditResult.hints).length > 0
       const result = await window.electronAPI.searchIMEIs({
         rootPath,
         selectedFolders,
@@ -228,7 +230,9 @@ function App(): JSX.Element {
         dateEnd: dr.dateEnd || undefined,
         scanIndexFilter: settings.scanIndex,
         mrPass: settings.mrPass || undefined,
-        mrFail: settings.mrFail || undefined
+        mrFail: settings.mrFail || undefined,
+        hints: useSmartSearch ? auditResult.hints : undefined,
+        smartSearch: useSmartSearch
       })
 
       // Discard result if cancelled or a newer operation started
@@ -374,7 +378,12 @@ function App(): JSX.Element {
             onFoldersChange={handleFoldersChange}
             onDateRangeChange={handleDateRangeChange}
           />
-          <AuditPanel lang={lang} onAuditLoaded={handleAuditLoaded} />
+          <AuditPanel
+            lang={lang}
+            onAuditLoaded={handleAuditLoaded}
+            smartSearch={smartSearch}
+            onSmartSearchChange={setSmartSearch}
+          />
           <SettingsPanel lang={lang} onSettingsChange={handleSettingsChange} />
           <ResultsPanel lang={lang} result={displayResult} searching={searching} />
           <ProgressBar

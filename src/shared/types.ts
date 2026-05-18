@@ -10,6 +10,22 @@ export interface FolderScanResult {
   folders: FolderInfo[]
 }
 
+/** Per-IMEI search hint extracted from audit file columns. */
+export interface AuditHint {
+  machine?: string   // Normalized to NAS folder name, e.g. "M8", "M10"
+  date?: string      // Normalized to YYYYMMDD format
+}
+
+/** Metadata about hint column detection quality. */
+export interface HintDetectionMeta {
+  machineColumn: string | null      // Original header name, null if not detected
+  dateColumn: string | null         // Original header name, null if not detected
+  machineValidCount: number         // How many rows had a parseable machine value
+  dateValidCount: number            // How many rows had a parseable date value
+  totalHintedRows: number           // Total data rows examined
+  dateFormatGuess: string | null    // Detected date format, e.g. "YYYY-MM-DD", "MM/DD/YYYY"
+}
+
 export interface AuditParseResult {
   format: 'csv' | 'xlsx' | 'xls' | 'txt' | 'unknown'
   filePath: string
@@ -22,6 +38,8 @@ export interface AuditParseResult {
     reason: string
   }[]
   duplicateCount: number
+  hints?: Record<string, AuditHint>   // IMEI -> hint (only present when columns detected)
+  hintMeta?: HintDetectionMeta        // Detection metadata
 }
 
 export interface SearchRequest {
@@ -33,6 +51,8 @@ export interface SearchRequest {
   scanIndexFilter: 'all' | 'first_only'
   mrPass?: boolean
   mrFail?: boolean
+  hints?: Record<string, AuditHint>
+  smartSearch?: boolean
 }
 
 export interface SearchMatch {

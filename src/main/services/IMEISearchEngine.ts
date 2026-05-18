@@ -1,6 +1,6 @@
 import { readdir } from 'fs/promises'
 import { join } from 'path'
-import type { SearchRequest, SearchMatch, SearchProgress, SearchResult } from '../../shared/types'
+import type { SearchRequest, SearchMatch, SearchProgress, SearchResult, AuditHint } from '../../shared/types'
 import { PROGRESS_THROTTLE_MS } from '../../shared/utils'
 import { pooled, type CancelToken } from '../../shared/pool'
 
@@ -83,18 +83,152 @@ function createProgressTracker(
   return { sendProgress, foldersScanned }
 }
 
-export async function searchIMEIs(
+// ── Smart Search: targeted lookups using audit file hints ───────────
+
+/**
+ * Targeted search — when audit data includes Machine + Date columns,
+ * go directly to root/Machine/Date/ and look for the IMEI folders.
+ * Returns the list of IMEIs that couldn't be resolved (fallbacks).
+ */
+async function searchTargeted(
   request: SearchRequest,
+  ctx: SearchContext,
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
-): Promise<SearchResult> {
-  // MR mode: entirely different search path
-  if (request.mrPass || request.mrFail) {
-    return searchMRImages(request, onProgress, onMatches)
+): Promise<{ searched: number; fallbackImeis: string[] }> {
+  const { token, matches, foundIMEIs } = ctx
+  const hints = request.hints!
+  const selectedSet = new Set(request.selectedFolders)
+
+  // Group hints by machine+date for efficient batch lookups
+  const directLookups = new Map<string, string[]>()
+  const fallbackImeis: string[] = []
+
+  for (const imei of request.imeis) {
+    const hint: AuditHint | undefined = hints[imei]
+    if (!hint?.machine || !hint?.date) {
+      fallbackImeis.push(imei)
+      continue
+    }
+    if (!selectedSet.has(hint.machine)) {
+      fallbackImeis.push(imei)
+      continue
+    }
+    if (!isDateInRange(hint.date, request)) {
+      fallbackImeis.push(imei)
+      continue
+    }
+    const key = `${hint.machine}/${hint.date}`
+    const existing = directLookups.get(key)
+    if (existing) existing.push(imei)
+    else directLookups.set(key, [imei])
   }
 
-  const ctx = createSearchContext(request.imeis)
-  const { token, imeiSet, matches, foundIMEIs, startTime } = ctx
+  const lookupEntries = [...directLookups.entries()]
+  let searched = 0
+  const totalLookups = lookupEntries.length
+
+  // Initial progress
+  if (totalLookups > 0) {
+    const [firstMachine, firstDate] = lookupEntries[0][0].split('/')
+    onProgress({
+      phase: 'scanning',
+      percent: 0,
+      currentMachine: firstMachine,
+      currentDate: firstDate,
+      matchesSoFar: 0,
+      foldersScanned: 0,
+      totalFolders: totalLookups + (fallbackImeis.length > 0 ? 1 : 0) // +1 placeholder for fallback phase
+    })
+  }
+
+  await pooled(lookupEntries, CONCURRENCY, token, async ([key, imeisInFolder]) => {
+    if (token.cancelled) return
+
+    const [machine, dateStr] = key.split('/')
+    const datePath = join(request.rootPath, machine, dateStr)
+
+    try {
+      const localImeiSet = new Set(imeisInFolder)
+      const entries = await readdir(datePath, { withFileTypes: true })
+      const pendingMatches: { imei: string; scanIndex: number; folderName: string; folderPath: string }[] = []
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const parsed = parseIMEIFolder(entry.name)
+        if (!parsed) continue
+        if (request.scanIndexFilter === 'first_only' && parsed.scanIndex !== 1) continue
+        if (localImeiSet.has(parsed.imei)) {
+          pendingMatches.push({
+            imei: parsed.imei,
+            scanIndex: parsed.scanIndex,
+            folderName: entry.name,
+            folderPath: join(datePath, entry.name)
+          })
+        }
+      }
+
+      if (pendingMatches.length > 0 && !token.cancelled) {
+        const fileCounts = await Promise.all(
+          pendingMatches.map((m) => countFiles(m.folderPath))
+        )
+        const batch: SearchMatch[] = []
+        for (let i = 0; i < pendingMatches.length; i++) {
+          const m = pendingMatches[i]
+          const fc = fileCounts[i]
+          const match: SearchMatch = {
+            imei: m.imei,
+            machineName: machine,
+            date: dateStr,
+            scanIndex: m.scanIndex,
+            folderName: m.folderName,
+            sourcePath: m.folderPath,
+            bmpCount: fc.bmp,
+            jpegCount: fc.jpeg,
+            otherCount: fc.other,
+            totalFiles: fc.bmp + fc.jpeg + fc.other
+          }
+          matches.push(match)
+          batch.push(match)
+          foundIMEIs.add(m.imei)
+        }
+        if (batch.length > 0) onMatches(batch)
+      }
+    } catch {
+      // Date folder not accessible — these IMEIs need fallback
+      for (const imei of imeisInFolder) {
+        if (!foundIMEIs.has(imei)) fallbackImeis.push(imei)
+      }
+    }
+
+    searched++
+    const now = Date.now()
+    if (now - ctx.startTime > PROGRESS_THROTTLE_MS * searched || searched === totalLookups) {
+      onProgress({
+        phase: 'scanning',
+        percent: totalLookups > 0 ? (searched / totalLookups) * (fallbackImeis.length > 0 ? 80 : 100) : 0,
+        currentMachine: key.split('/')[0],
+        currentDate: key.split('/')[1],
+        matchesSoFar: matches.length,
+        foldersScanned: searched,
+        totalFolders: totalLookups
+      })
+    }
+  })
+
+  return { searched, fallbackImeis }
+}
+
+// ── Broad scan (original search path) ──────────────────────────────
+
+async function searchBroad(
+  request: SearchRequest,
+  ctx: SearchContext,
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void,
+  percentOffset: number = 0
+): Promise<number> {
+  const { token, imeiSet, matches, foundIMEIs } = ctx
 
   // Phase 1: Discover date folders (parallel across machines)
   const dateFolders: DateFolder[] = []
@@ -123,15 +257,42 @@ export async function searchIMEIs(
     }
   })
 
-  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, token, onProgress)
+  if (token.cancelled) return 0
 
-  const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
+  const totalFolders = dateFolders.length
+  const foldersScanned = { value: 0 }
+  let lastProgressTime = 0
+  const percentRange = 100 - percentOffset
+
+  if (dateFolders.length > 0) {
+    onProgress({
+      phase: 'scanning',
+      percent: percentOffset,
+      currentMachine: dateFolders[0].machine,
+      currentDate: dateFolders[0].dateStr,
+      matchesSoFar: matches.length,
+      foldersScanned: 0,
+      totalFolders
+    })
+  }
 
   // Phase 2: Scan date folders for IMEI matches (parallel pool)
   await pooled(dateFolders, CONCURRENCY, token, async ({ machine, datePath, dateStr }) => {
     if (token.cancelled) return
 
-    sendProgress(machine, dateStr)
+    const now = Date.now()
+    if (now - lastProgressTime >= PROGRESS_THROTTLE_MS) {
+      lastProgressTime = now
+      onProgress({
+        phase: 'scanning',
+        percent: percentOffset + (totalFolders > 0 ? (foldersScanned.value / totalFolders) * percentRange : 0),
+        currentMachine: machine,
+        currentDate: dateStr,
+        matchesSoFar: matches.length,
+        foldersScanned: foldersScanned.value,
+        totalFolders
+      })
+    }
 
     try {
       const imeiEntries = await readdir(datePath, { withFileTypes: true })
@@ -196,7 +357,58 @@ export async function searchIMEIs(
     foldersScanned.value++
   })
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, token, onProgress)
+  return foldersScanned.value
+}
+
+// ── Main search dispatcher ─────────────────────────────────────────
+
+export async function searchIMEIs(
+  request: SearchRequest,
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void
+): Promise<SearchResult> {
+  // MR mode: entirely different search path
+  if (request.mrPass || request.mrFail) {
+    return searchMRImages(request, onProgress, onMatches)
+  }
+
+  const ctx = createSearchContext(request.imeis)
+  const { token, matches, foundIMEIs, startTime } = ctx
+
+  // Smart Search: targeted lookups when audit file had machine + date columns
+  if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
+    const { searched: directSearched, fallbackImeis } = await searchTargeted(
+      request, ctx, onProgress, onMatches
+    )
+
+    if (token.cancelled) {
+      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, token, onProgress)
+    }
+
+    // If all IMEIs were handled, done
+    if (fallbackImeis.length === 0) {
+      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, token, onProgress)
+    }
+
+    // Broad scan for remaining IMEIs without complete hints
+    const fallbackSet = new Set(fallbackImeis)
+    ctx.imeiSet.clear()
+    for (const imei of fallbackImeis) ctx.imeiSet.add(imei)
+
+    const fallbackRequest: SearchRequest = {
+      ...request,
+      imeis: fallbackImeis.filter((imei) => fallbackSet.has(imei)),
+      hints: undefined,
+      smartSearch: false
+    }
+
+    const broadScanned = await searchBroad(fallbackRequest, ctx, onProgress, onMatches, 80)
+    return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched + broadScanned, token, onProgress)
+  }
+
+  // Standard broad scan (no hints available)
+  const scanned = await searchBroad(request, ctx, onProgress, onMatches)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, scanned, token, onProgress)
 }
 
 function buildResult(

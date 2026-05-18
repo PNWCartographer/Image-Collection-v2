@@ -114,3 +114,63 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ── Smart Search hint detection ── */
+
+.hintSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+}
+
+.hintRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hintInfo {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hintBadge {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.hintBadgeGood {
+  background: rgba(52, 199, 89, 0.15);
+  color: var(--status-green);
+}
+
+.hintBadgeWarn {
+  background: rgba(255, 149, 0, 0.15);
+  color: var(--status-orange);
+}
+
+.hintBadgeError {
+  background: rgba(255, 59, 48, 0.15);
+  color: var(--status-red);
+}
+
+.hintToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hintWarn {
+  font-size: var(--font-size-xs);
+  color: var(--status-orange);
+  padding-left: 2px;
+}

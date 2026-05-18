@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import GlassCard from '../layout/GlassCard'
+import Toggle from '../common/Toggle'
+import Tooltip from '../common/Tooltip'
 import type { AuditParseResult } from '../../../shared/types'
 import styles from './AuditPanel.module.css'
 
 interface AuditPanelProps {
   lang: 'en' | 'zh'
   onAuditLoaded: (result: AuditParseResult | null) => void
+  smartSearch?: boolean
+  onSmartSearchChange?: (enabled: boolean) => void
 }
 
-export default function AuditPanel({ lang, onAuditLoaded }: AuditPanelProps): JSX.Element {
+export default function AuditPanel({ lang, onAuditLoaded, smartSearch, onSmartSearchChange }: AuditPanelProps): JSX.Element {
   const [dragOver, setDragOver] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [result, setResult] = useState<AuditParseResult | null>(null)
@@ -61,6 +65,9 @@ export default function AuditPanel({ lang, onAuditLoaded }: AuditPanelProps): JS
     if (fmt === 'txt') return 'TXT'
     return fmt.toUpperCase()
   }
+
+  const hintMeta = result?.hintMeta
+  const hasHints = hintMeta && (hintMeta.machineColumn !== null || hintMeta.dateColumn !== null)
 
   return (
     <GlassCard title={lang === 'en' ? 'Audit List' : '审计列表'} delay={0.05}>
@@ -116,6 +123,64 @@ export default function AuditPanel({ lang, onAuditLoaded }: AuditPanelProps): JS
                 <span className={styles.warn}>
                   {result.duplicateCount} {lang === 'en' ? 'duplicates found' : '个重复项'}
                 </span>
+              )}
+            </div>
+          )}
+
+          {/* ── Smart Search hint detection ── */}
+          {hasHints && (
+            <div className={styles.hintSection}>
+              <div className={styles.hintRow}>
+                <div className={styles.hintInfo}>
+                  {hintMeta.machineColumn !== null && (
+                    <span className={`${styles.hintBadge} ${
+                      hintMeta.machineValidCount === hintMeta.totalHintedRows
+                        ? styles.hintBadgeGood
+                        : hintMeta.machineValidCount >= hintMeta.totalHintedRows * 0.8
+                          ? styles.hintBadgeWarn
+                          : styles.hintBadgeError
+                    }`}>
+                      {lang === 'en' ? 'Machine' : '机器'}: {hintMeta.machineValidCount}/{hintMeta.totalHintedRows}
+                    </span>
+                  )}
+                  {hintMeta.dateColumn !== null && (
+                    <span className={`${styles.hintBadge} ${
+                      hintMeta.dateValidCount === hintMeta.totalHintedRows
+                        ? styles.hintBadgeGood
+                        : hintMeta.dateValidCount >= hintMeta.totalHintedRows * 0.8
+                          ? styles.hintBadgeWarn
+                          : styles.hintBadgeError
+                    }`}>
+                      {lang === 'en' ? 'Date' : '日期'}: {hintMeta.dateValidCount}/{hintMeta.totalHintedRows}
+                      {hintMeta.dateFormatGuess && ` (${hintMeta.dateFormatGuess})`}
+                    </span>
+                  )}
+                </div>
+                <div className={styles.hintToggle}>
+                  <Toggle
+                    label={lang === 'en' ? 'Smart Search' : '智能搜索'}
+                    checked={smartSearch ?? true}
+                    onChange={(v) => onSmartSearchChange?.(v)}
+                  />
+                  <Tooltip text={lang === 'en'
+                    ? 'Uses Machine and Date columns for targeted folder lookups instead of scanning all folders. Much faster when both columns are available. Turn off to fall back to IMEI-only search.'
+                    : '使用机器和日期列进行定向文件夹查找，而不是扫描所有文件夹。当两列都可用时速度大幅提升。关闭则回退到仅IMEI搜索。'
+                  } />
+                </div>
+              </div>
+              {hintMeta.machineValidCount < hintMeta.totalHintedRows && hintMeta.machineColumn !== null && (
+                <div className={styles.hintWarn}>
+                  {lang === 'en'
+                    ? `${hintMeta.totalHintedRows - hintMeta.machineValidCount} IMEIs have unrecognized machine values — these will use broad scan as fallback`
+                    : `${hintMeta.totalHintedRows - hintMeta.machineValidCount} 个IMEI的机器值无法识别 — 这些将使用广泛扫描作为后备`}
+                </div>
+              )}
+              {hintMeta.dateValidCount < hintMeta.totalHintedRows && hintMeta.dateColumn !== null && (
+                <div className={styles.hintWarn}>
+                  {lang === 'en'
+                    ? `${hintMeta.totalHintedRows - hintMeta.dateValidCount} IMEIs have unparseable date values — these will use broad scan as fallback`
+                    : `${hintMeta.totalHintedRows - hintMeta.dateValidCount} 个IMEI的日期值无法解析 — 这些将使用广泛扫描作为后备`}
+                </div>
               )}
             </div>
           )}

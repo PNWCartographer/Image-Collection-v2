@@ -22,6 +22,7 @@ Operators import an audit list of 15-digit IMEIs, select which NAS machine folde
 | Feature | Description |
 |---|---|
 | **Multi-format audit import** | CSV, XLSX, XLS, TXT — auto-detects IMEI column and skips headers |
+| **Smart Search** | Auto-detects Machine and Date columns in audit files for targeted folder lookups instead of full NAS scan |
 | **Parallel NAS search** | 48 concurrent folder reads, tuned for RS3617RPxs (12-drive RAID 5, 1 Gbps) |
 | **Parallel export** | 8 folders x 4 files = 32 concurrent copies, saturates the 1 Gbps pipe |
 | **6 organization modes** | Flat, By Machine, By Date, Machine-Date, Date-Machine, By IMEI |
@@ -85,6 +86,41 @@ Drag-and-drop or browse to import an audit file. Supported formats:
 **IMEI validation**: exactly 15 numeric digits. Invalid entries and duplicates are counted and reported.
 
 After import, the panel shows: detected format, file name, valid IMEI count, and any warnings.
+
+### Smart Search
+
+When a CSV or Excel file contains **Machine** and/or **Date** columns alongside the IMEI column, the parser auto-detects them and enables **Smart Search**. Instead of scanning every folder on the NAS, the search goes directly to the specific Machine/Date path for each IMEI — reducing search time from minutes to seconds.
+
+**Machine column detection** — recognizes these formats and normalizes to NAS folder names:
+
+| Value in file | Normalized to |
+|---|---|
+| M8, M10 | M8, M10 (exact) |
+| M08, M-8, M-08 | M8 (strip leading zero / hyphen) |
+| Machine 8 | M8 (extract number) |
+| 08, 8 | M8 (bare number) |
+
+**Date column detection** — recognizes these formats and normalizes to YYYYMMDD:
+
+| Format | Example |
+|---|---|
+| YYYYMMDD | 20260515 |
+| YYYY-MM-DD | 2026-05-15 |
+| YYYY/MM/DD | 2026/05/15 |
+| MM/DD/YYYY | 05/15/2026 |
+| MM-DD-YYYY | 05-15-2026 |
+| M/D/YYYY | 5/15/2026 |
+
+For ambiguous date formats (MM/DD vs DD/MM), the parser samples all rows to determine which interpretation is correct. Defaults to MM/DD (US format) when fully ambiguous.
+
+**Detection quality** is shown in the Audit panel with color-coded badges:
+- **Green**: all rows parsed successfully
+- **Orange**: 80%+ rows parsed (some values unrecognized)
+- **Red**: less than 80% parsed (column detection may be unreliable)
+
+IMEIs with missing or unrecognized Machine/Date values automatically fall back to the standard broad scan — no results are ever lost, those IMEIs just search slower.
+
+The **Smart Search toggle** lets you disable the feature and fall back to IMEI-only search if the audit file's Machine/Date data is inaccurate.
 
 ---
 
