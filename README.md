@@ -2,7 +2,7 @@
 
 Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme.
 
-Operators import an audit list of 15-digit IMEIs, select which NAS machine folders to search, and export matched image folders to a local destination with configurable organization.
+Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which NAS machine folders to search, and export matched image folders to a local destination with configurable organization.
 
 ---
 
@@ -10,10 +10,11 @@ Operators import an audit list of 15-digit IMEIs, select which NAS machine folde
 
 1. **Install** — run `Image Collection v2 Setup X.X.X.exe` and follow the prompts.
 2. **Set source** — click **Browse** next to Shared Folder and select the NAS root (e.g. `Z:\`). Machine folders populate automatically.
-3. **Import audit list** — click **Browse** in the Audit panel or drag-and-drop a CSV / XLSX / TXT file.
-4. **Configure settings** — choose Action, Image Type, Organize mode, and set a Destination.
-5. **Search** — click **Start Search**. Matches stream into the results table in real time.
-6. **Export** — review results, then click **Export Results**. Progress shows in the status bar.
+3. **Import audit list** — click **Browse** in the Audit panel or drag-and-drop a CSV / XLSX file. **For best results, include IMEI, Machine, and Date columns** — Smart Search will auto-detect them and search in seconds instead of minutes.
+4. **Verify detection** — check the Audit panel for green badges confirming Machine and Date columns were detected. If detection fails or data is inaccurate, toggle Smart Search OFF to fall back to IMEI-only mode.
+5. **Configure settings** — choose Action, Image Type, Organize mode, and set a Destination.
+6. **Search** — click **Start Search**. Matches stream into the results table in real time.
+7. **Export** — review results, then click **Export Results**. Progress shows in the status bar.
 
 ---
 
@@ -75,23 +76,23 @@ Restrict searches to date folders within a window:
 
 ## Audit List Import
 
-Drag-and-drop or browse to import an audit file. Supported formats:
+Drag-and-drop or browse to import an audit file.
 
-| Format | Behavior |
-|---|---|
-| **CSV** | Auto-detects the IMEI column by sampling the first 20 rows. Skips header rows. Handles comma, tab, and semicolon delimiters. |
-| **XLSX / XLS** | Reads the first sheet. Auto-detects the IMEI column. Skips header rows. |
-| **TXT** | One value per line. Each line is treated as a potential IMEI. |
+### Recommended: Smart Search (IMEI + Machine + Date)
 
-**IMEI validation**: exactly 15 numeric digits. Invalid entries and duplicates are counted and reported.
+The fastest way to collect images is to include **IMEI**, **Machine**, and **Date** columns in your audit file (CSV or Excel). When all three columns are present, Smart Search goes directly to the exact folder on the NAS for each IMEI — reducing search time from minutes to seconds.
 
-After import, the panel shows: detected format, file name, valid IMEI count, and any warnings.
+**Recommended audit file format:**
 
-### Smart Search
+| IMEI | Machine | Date |
+|---|---|---|
+| 350308317018557 | M14 | 2026-05-14 |
+| 350448886316469 | M21 | 2026-05-14 |
+| 351101754222413 | M22 | 2026-05-14 |
 
-When a CSV or Excel file contains **Machine** and/or **Date** columns alongside the IMEI column, the parser auto-detects them and enables **Smart Search**. Instead of scanning every folder on the NAS, the search goes directly to the specific Machine/Date path for each IMEI — reducing search time from minutes to seconds.
+The column headers can be anything — the parser identifies columns by their data patterns, not by header names. Column order does not matter. Additional columns are ignored. The IMEI column is always identified by the presence of 15-digit numeric values.
 
-**Machine column detection** — recognizes these formats and normalizes to NAS folder names:
+**Machine column** — recognizes these name formats:
 
 | Value in file | Normalized to |
 |---|---|
@@ -100,7 +101,7 @@ When a CSV or Excel file contains **Machine** and/or **Date** columns alongside 
 | Machine 8 | M8 (extract number) |
 | 08, 8 | M8 (bare number) |
 
-**Date column detection** — recognizes these formats and normalizes to YYYYMMDD:
+**Date column** — recognizes these date formats:
 
 | Format | Example |
 |---|---|
@@ -113,14 +114,26 @@ When a CSV or Excel file contains **Machine** and/or **Date** columns alongside 
 
 For ambiguous date formats (MM/DD vs DD/MM), the parser samples all rows to determine which interpretation is correct. Defaults to MM/DD (US format) when fully ambiguous.
 
-**Detection quality** is shown in the Audit panel with color-coded badges:
+**After import**, the Audit panel shows detection quality with color-coded badges:
 - **Green**: all rows parsed successfully
 - **Orange**: 80%+ rows parsed (some values unrecognized)
 - **Red**: less than 80% parsed (column detection may be unreliable)
 
 IMEIs with missing or unrecognized Machine/Date values automatically fall back to the standard broad scan — no results are ever lost, those IMEIs just search slower.
 
-The **Smart Search toggle** lets you disable the feature and fall back to IMEI-only search if the audit file's Machine/Date data is inaccurate.
+If the detected columns are inaccurate, toggle **Smart Search OFF** to fall back to IMEI-only mode.
+
+### Fallback: IMEI-Only Import
+
+If your audit data only contains IMEIs (no Machine or Date columns), the tool falls back to a broad NAS scan — searching every date folder across all selected machines. This works but is significantly slower.
+
+| Format | Behavior |
+|---|---|
+| **CSV** | Auto-detects the IMEI column by sampling the first 20 rows. Skips header rows. Handles comma, tab, and semicolon delimiters. |
+| **XLSX / XLS** | Reads the first sheet. Auto-detects the IMEI column. Skips header rows. |
+| **TXT** | One value per line. Each line is treated as a potential IMEI. Smart Search is not available for TXT files (single column). |
+
+**IMEI validation**: exactly 15 numeric digits. Invalid entries and duplicates are counted and reported.
 
 ---
 
