@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, screen, globalShortcut } from 'electron'
 import { join } from 'path'
 import { writeFile } from 'fs/promises'
+import { execFile } from 'child_process'
 import { scanRootFolder } from './services/FolderScanner'
 import { parseAuditFile } from './services/AuditParser'
 import { searchIMEIs, cancelSearch } from './services/IMEISearchEngine'
@@ -17,16 +18,69 @@ function getIconPath(): string {
   return join(__dirname, '../../resources/icon.ico')
 }
 
+/**
+ * Validate saved window bounds against connected displays.
+ * Returns the bounds if at least 100px of the window is visible
+ * on any display, otherwise returns undefined to use defaults.
+ */
+function validateBounds(
+  saved: { x: number; y: number; width: number; height: number } | undefined
+): { x: number; y: number; width: number; height: number } | undefined {
+  if (!saved) return undefined
+  const displays = screen.getAllDisplays()
+  const visible = displays.some((d) => {
+    const wa = d.workArea
+    // At least 100px of the window must overlap with the work area
+    return (
+      saved.x + saved.width > wa.x + 100 &&
+      saved.x < wa.x + wa.width - 100 &&
+      saved.y + saved.height > wa.y + 50 &&
+      saved.y < wa.y + wa.height - 50
+    )
+  })
+  return visible ? saved : undefined
+}
+
+/**
+ * Re-enable the WS_SYSMENU window style on frameless windows so
+ * shift+right-click on the taskbar shows the system menu (Move,
+ * Size, Minimize, Maximize, Close). Electron strips this style
+ * when frame: false is set. Runs asynchronously — non-blocking.
+ */
+function restoreSystemMenu(win: BrowserWindow): void {
+  if (process.platform !== 'win32') return
+  try {
+    const hwnd = win.getNativeWindowHandle()
+    // HWND is 8 bytes on 64-bit Windows
+    const hwndStr = hwnd.readBigUInt64LE(0).toString()
+    const script = `
+Add-Type @'
+using System;using System.Runtime.InteropServices;
+public class W{
+[DllImport("user32.dll")]public static extern int GetWindowLong(IntPtr h,int i);
+[DllImport("user32.dll")]public static extern int SetWindowLong(IntPtr h,int i,int v);
+}
+'@
+$s=[W]::GetWindowLong([IntPtr]::new(${hwndStr}),-16)
+[W]::SetWindowLong([IntPtr]::new(${hwndStr}),-16,$s-bor 0x80000)
+`
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script])
+  } catch {
+    // Non-critical — system menu is a convenience, not essential
+  }
+}
+
 function createWindow(): void {
   const saved = getSetting('windowBounds') as
     | { x: number; y: number; width: number; height: number }
     | undefined
+  const bounds = validateBounds(saved)
 
   mainWindow = new BrowserWindow({
-    width: saved?.width ?? 1100,
-    height: saved?.height ?? 800,
-    x: saved?.x,
-    y: saved?.y,
+    width: bounds?.width ?? 1100,
+    height: bounds?.height ?? 800,
+    x: bounds?.x,
+    y: bounds?.y,
     minWidth: 900,
     minHeight: 600,
     frame: false,
@@ -36,6 +90,23 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false
     }
+  })
+
+  // Re-enable system menu for taskbar shift+right-click
+  restoreSystemMenu(mainWindow)
+
+  // Center on primary display shortcut (recovery from off-screen)
+  globalShortcut.register('Ctrl+Shift+Home', () => {
+    if (!mainWindow) return
+    const primary = screen.getPrimaryDisplay().workArea
+    mainWindow.setBounds({
+      x: Math.round(primary.x + (primary.width - 1100) / 2),
+      y: Math.round(primary.y + (primary.height - 800) / 2),
+      width: 1100,
+      height: 800
+    })
+    mainWindow.show()
+    mainWindow.focus()
   })
 
   mainWindow.on('close', () => {
@@ -155,5 +226,6 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  globalShortcut.unregisterAll()
   app.quit()
 })
