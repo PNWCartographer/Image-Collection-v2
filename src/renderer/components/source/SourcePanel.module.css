@@ -188,7 +188,12 @@
   transition: background var(--transition-fast);
 }
 
-.textBtn:hover {
+.textBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.textBtn:hover:not(:disabled) {
   background: var(--bg-glass-hover);
 }
 
@@ -266,7 +271,7 @@
 
 .dateWarn {
   font-size: var(--font-size-xs);
-  color: var(--status-warning, #f5a623);
+  color: var(--status-orange);
   font-weight: var(--font-weight-medium);
   padding-left: 2px;
 }
