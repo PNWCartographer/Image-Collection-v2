@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import type { Lang } from '../../../shared/i18n'
 
 interface Props {
   children: ReactNode
@@ -9,27 +10,34 @@ interface State {
   error: Error | null
 }
 
-function getLang(): 'en' | 'zh' {
+function getLang(): Lang {
   try {
     // Read from localStorage as a synchronous fallback (electron-store is async)
     const raw = localStorage.getItem('appLang')
-    if (raw === 'zh') return 'zh'
+    // Migrate legacy 'zh' → 'zh-TW'
+    if (raw === 'zh') return 'zh-TW'
+    if (raw === 'zh-TW' || raw === 'zh-CN') return raw
   } catch {
     // localStorage may not be available
   }
   return 'en'
 }
 
-const TEXT = {
+const TEXT: Record<Lang, { heading: string; fallback: string; button: string }> = {
   en: {
     heading: 'Something went wrong',
     fallback: 'An unexpected error occurred.',
     button: 'Try Again'
   },
-  zh: {
+  'zh-TW': {
     heading: '發生錯誤',
     fallback: '發生了意外錯誤。',
     button: '重試'
+  },
+  'zh-CN': {
+    heading: '发生错误',
+    fallback: '发生了意外错误。',
+    button: '重试'
   }
 }
 

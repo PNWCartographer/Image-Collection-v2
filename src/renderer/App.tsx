@@ -11,12 +11,13 @@ import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
 import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest, SearchHistoryEntry } from '../shared/types'
 import { formatElapsed, generateId } from '../shared/utils'
+import type { Lang } from '../shared/i18n'
 import styles from './App.module.css'
 
 // ── Pure helpers for status bar and progress display ──
 
 interface StatusInputs {
-  lang: 'en' | 'zh'
+  lang: Lang
   exporting: boolean
   exportProgress: ExportProgress | null
   exportResult: ExportResult | null
@@ -32,34 +33,46 @@ function buildStatusMessage(s: StatusInputs): string {
     const ep = s.exportProgress
     return s.lang === 'en'
       ? `Exporting ${ep.currentIMEI} · ${ep.exported} exported · ${ep.skipped} skipped`
-      : `正在匯出 ${ep.currentIMEI} · ${ep.exported} 已匯出 · ${ep.skipped} 已略過`
+      : s.lang === 'zh-TW'
+        ? `正在匯出 ${ep.currentIMEI} · ${ep.exported} 已匯出 · ${ep.skipped} 已略過`
+        : `正在导出 ${ep.currentIMEI} · ${ep.exported} 已导出 · ${ep.skipped} 已跳过`
   }
-  if (s.exporting) return s.lang === 'en' ? 'Preparing export...' : '正在準備匯出...'
+  if (s.exporting) return s.lang === 'en' ? 'Preparing export...' : s.lang === 'zh-TW' ? '正在準備匯出...' : '正在准备导出...'
   if (s.exportResult) {
     return s.lang === 'en'
       ? `Export complete · ${s.exportResult.exported} exported · ${s.exportResult.skipped} skipped · ${s.exportResult.failed} failed · ${formatElapsed(s.exportResult.elapsedMs)}`
-      : `匯出完成 · ${s.exportResult.exported} 已匯出 · ${s.exportResult.skipped} 已略過 · ${s.exportResult.failed} 失敗 · ${formatElapsed(s.exportResult.elapsedMs)}`
+      : s.lang === 'zh-TW'
+        ? `匯出完成 · ${s.exportResult.exported} 已匯出 · ${s.exportResult.skipped} 已略過 · ${s.exportResult.failed} 失敗 · ${formatElapsed(s.exportResult.elapsedMs)}`
+        : `导出完成 · ${s.exportResult.exported} 已导出 · ${s.exportResult.skipped} 已跳过 · ${s.exportResult.failed} 失败 · ${formatElapsed(s.exportResult.elapsedMs)}`
   }
   if (s.searching && s.progress) {
     return s.lang === 'en'
       ? `Searching ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} matches`
-      : `正在搜尋 ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} 個匹配`
+      : s.lang === 'zh-TW'
+        ? `正在搜尋 ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} 個匹配`
+        : `正在搜索 ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} 个匹配`
   }
-  if (s.searching) return s.lang === 'en' ? 'Preparing search...' : '正在準備搜尋...'
+  if (s.searching) return s.lang === 'en' ? 'Preparing search...' : s.lang === 'zh-TW' ? '正在準備搜尋...' : '正在准备搜索...'
   if (s.searchResult) {
     const unique = new Set(s.searchResult.matches.map((m) => m.imei)).size
     return s.lang === 'en'
       ? `Search complete · ${unique.toLocaleString()} IMEIs found · ${s.searchResult.matches.length.toLocaleString()} matches · ${formatElapsed(s.searchResult.elapsedMs)}`
-      : `搜尋完成 · 找到 ${unique.toLocaleString()} 個IMEI · ${s.searchResult.matches.length.toLocaleString()} 個匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
+      : s.lang === 'zh-TW'
+        ? `搜尋完成 · 找到 ${unique.toLocaleString()} 個IMEI · ${s.searchResult.matches.length.toLocaleString()} 個匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
+        : `搜索完成 · 找到 ${unique.toLocaleString()} 个IMEI · ${s.searchResult.matches.length.toLocaleString()} 个匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
   }
   if (s.auditResult) {
-    return `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} ${s.lang === 'en' ? 'folders selected' : '個資料夾已選擇'}`
+    return s.lang === 'en'
+      ? `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} folders selected`
+      : s.lang === 'zh-TW'
+        ? `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} 個資料夾已選擇`
+        : `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} 个文件夹已选择`
   }
-  return s.lang === 'en' ? 'Ready' : '就緒'
+  return s.lang === 'en' ? 'Ready' : s.lang === 'zh-TW' ? '就緒' : '就绪'
 }
 
 function buildProgressState(
-  lang: 'en' | 'zh',
+  lang: Lang,
   exporting: boolean,
   exportProgress: ExportProgress | null,
   progress: SearchProgress | null
@@ -68,31 +81,35 @@ function buildProgressState(
     return {
       percent: exportProgress?.percent ?? 0,
       label: exportProgress
-        ? (lang === 'en' ? `Exporting ${exportProgress.currentFolder}` : `正在匯出 ${exportProgress.currentFolder}`)
-        : (lang === 'en' ? 'Preparing export...' : '準備匯出中...'),
+        ? (lang === 'en' ? `Exporting ${exportProgress.currentFolder}` : lang === 'zh-TW' ? `正在匯出 ${exportProgress.currentFolder}` : `正在导出 ${exportProgress.currentFolder}`)
+        : (lang === 'en' ? 'Preparing export...' : lang === 'zh-TW' ? '準備匯出中...' : '准备导出中...'),
       sublabel: exportProgress
         ? (lang === 'en'
             ? `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} items · ${exportProgress.exported} exported`
-            : `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 項 · ${exportProgress.exported} 已匯出`)
+            : lang === 'zh-TW'
+              ? `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 項 · ${exportProgress.exported} 已匯出`
+              : `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 项 · ${exportProgress.exported} 已导出`)
         : undefined
     }
   }
   return {
     percent: progress?.percent ?? 0,
     label: progress
-      ? (lang === 'en' ? `Scanning ${progress.currentMachine}/${progress.currentDate}` : `正在掃描 ${progress.currentMachine}/${progress.currentDate}`)
-      : (lang === 'en' ? 'Preparing...' : '準備中...'),
+      ? (lang === 'en' ? `Scanning ${progress.currentMachine}/${progress.currentDate}` : lang === 'zh-TW' ? `正在掃描 ${progress.currentMachine}/${progress.currentDate}` : `正在扫描 ${progress.currentMachine}/${progress.currentDate}`)
+      : (lang === 'en' ? 'Preparing...' : lang === 'zh-TW' ? '準備中...' : '准备中...'),
     sublabel: progress
       ? (lang === 'en'
           ? `${progress.foldersScanned}/${progress.totalFolders} folders · ${progress.matchesSoFar} matches`
-          : `${progress.foldersScanned}/${progress.totalFolders} 個資料夾 · ${progress.matchesSoFar} 個匹配`)
+          : lang === 'zh-TW'
+            ? `${progress.foldersScanned}/${progress.totalFolders} 個資料夾 · ${progress.matchesSoFar} 個匹配`
+            : `${progress.foldersScanned}/${progress.totalFolders} 个文件夹 · ${progress.matchesSoFar} 个匹配`)
       : undefined
   }
 }
 
 function App(): JSX.Element {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
-  const [lang, setLang] = useState<'en' | 'zh'>('en')
+  const [lang, setLang] = useState<Lang>('en')
   const [selectedFolders, setSelectedFolders] = useState<string[]>([])
   const [rootPath, setRootPath] = useState('')
   const [auditResult, setAuditResult] = useState<AuditParseResult | null>(null)
@@ -132,9 +149,13 @@ function App(): JSX.Element {
       }
     })
     window.electronAPI.settingsGet('lang').then((saved) => {
-      if (saved === 'en' || saved === 'zh') {
-        setLang(saved)
-        try { localStorage.setItem('appLang', saved) } catch { /* noop */ }
+      // Migrate legacy 'zh' → 'zh-TW'
+      const resolved = saved === 'zh' ? 'zh-TW' : saved
+      if (resolved === 'en' || resolved === 'zh-TW' || resolved === 'zh-CN') {
+        setLang(resolved)
+        try { localStorage.setItem('appLang', resolved) } catch { /* noop */ }
+        // Persist migration if needed
+        if (saved === 'zh') window.electronAPI.settingsSet('lang', 'zh-TW')
       }
     })
     window.electronAPI.settingsGet('searchHistory').then((saved) => {
@@ -182,7 +203,7 @@ function App(): JSX.Element {
   }
 
   const toggleLang = (): void => {
-    const next = lang === 'en' ? 'zh' : 'en'
+    const next: Lang = lang === 'en' ? 'zh-TW' : lang === 'zh-TW' ? 'zh-CN' : 'en'
     setLang(next)
     window.electronAPI.settingsSet('lang', next)
     try { localStorage.setItem('appLang', next) } catch { /* noop */ }

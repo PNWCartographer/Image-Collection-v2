@@ -1,3 +1,4 @@
+import { t, type Lang } from '../../../shared/i18n'
 import styles from './StatusBar.module.css'
 
 declare const __APP_VERSION__: string
@@ -7,7 +8,7 @@ interface StatusBarProps {
   message: string
   showLogLink?: boolean
   onOpenLogs?: () => void
-  lang?: 'en' | 'zh'
+  lang?: Lang
 }
 
 export default function StatusBar({ message, showLogLink, onOpenLogs, lang = 'en' }: StatusBarProps): JSX.Element {
@@ -17,7 +18,7 @@ export default function StatusBar({ message, showLogLink, onOpenLogs, lang = 'en
       <div className={styles.right}>
         {showLogLink && onOpenLogs && (
           <button className={styles.logLink} onClick={onOpenLogs}>
-            {lang === 'en' ? 'View Log' : '檢視日誌'}
+            {t(lang, 'View Log', '檢視日誌', '查看日志')}
           </button>
         )}
         <span className={styles.version}>v{APP_VERSION}</span>

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import type { SearchHistoryEntry } from '../../../shared/types'
 import { formatElapsed } from '../../../shared/utils'
+import { t, type Lang } from '../../../shared/i18n'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import styles from './ActionButtons.module.css'
 
@@ -15,16 +16,16 @@ interface ActionButtonsProps {
   searching: boolean
   exporting?: boolean
   searchHistory?: SearchHistoryEntry[]
-  lang: 'en' | 'zh'
+  lang: Lang
 }
 
-function formatTimestamp(ts: number, lang: 'en' | 'zh'): string {
+function formatTimestamp(ts: number, lang: Lang): string {
   const d = new Date(ts)
   const month = d.getMonth() + 1
   const day = d.getDate()
   const h = d.getHours()
   const m = String(d.getMinutes()).padStart(2, '0')
-  if (lang === 'zh') return `${month}/${day} ${h}:${m}`
+  if (lang !== 'en') return `${month}/${day} ${h}:${m}`
   const ampm = h >= 12 ? 'PM' : 'AM'
   const h12 = h % 12 || 12
   return `${month}/${day} ${h12}:${m} ${ampm}`
@@ -55,7 +56,7 @@ export default function ActionButtons({
           className={styles.cancel}
           onClick={onCancel}
         >
-          {lang === 'en' ? 'Cancel Search' : '取消搜尋'}
+          {t(lang, 'Cancel Search', '取消搜尋', '取消搜索')}
         </button>
       ) : (
         <button
@@ -63,7 +64,7 @@ export default function ActionButtons({
           onClick={onSearch}
           disabled={!canSearch}
         >
-          {lang === 'en' ? 'Start Search' : '開始搜尋'}
+          {t(lang, 'Start Search', '開始搜尋', '开始搜索')}
         </button>
       )}
       {exporting ? (
@@ -71,7 +72,7 @@ export default function ActionButtons({
           className={styles.cancel}
           onClick={onCancelExport}
         >
-          {lang === 'en' ? 'Cancel Export' : '取消匯出'}
+          {t(lang, 'Cancel Export', '取消匯出', '取消导出')}
         </button>
       ) : (
         <button
@@ -79,11 +80,11 @@ export default function ActionButtons({
           onClick={onExport}
           disabled={!canExport}
         >
-          {lang === 'en' ? 'Export Results' : '匯出結果'}
+          {t(lang, 'Export Results', '匯出結果', '导出结果')}
         </button>
       )}
       <button className={styles.secondary} onClick={onClear}>
-        {lang === 'en' ? 'Clear' : '清除'}
+        {t(lang, 'Clear', '清除', '清除')}
       </button>
 
       {/* ── Search History ── */}
@@ -92,9 +93,9 @@ export default function ActionButtons({
           className={styles.historyBtn}
           onClick={() => setHistoryOpen(!historyOpen)}
           disabled={searchHistory.length === 0}
-          title={lang === 'en' ? 'Recent searches' : '最近搜尋'}
+          title={t(lang, 'Recent searches', '最近搜尋', '最近搜索')}
         >
-          {lang === 'en' ? 'History' : '歷史'}
+          {t(lang, 'History', '歷史', '历史')}
           {searchHistory.length > 0 && (
             <span className={styles.historyBadge}>{searchHistory.length}</span>
           )}
@@ -102,7 +103,7 @@ export default function ActionButtons({
         {historyOpen && searchHistory.length > 0 && (
           <div className={styles.historyDropdown}>
             <div className={styles.historyTitle}>
-              {lang === 'en' ? 'Recent Searches' : '最近搜尋'}
+              {t(lang, 'Recent Searches', '最近搜尋', '最近搜索')}
             </div>
             {searchHistory.map((entry) => {
               const uniqueFound = entry.matchCount > 0
@@ -125,7 +126,7 @@ export default function ActionButtons({
                     <span className={styles.historyStats}>
                       {uniqueFound} IMEIs
                       {' · '}
-                      {entry.matchCount.toLocaleString()} {lang === 'en' ? 'matches' : '個匹配'}
+                      {entry.matchCount.toLocaleString()} {t(lang, 'matches', '個匹配', '个匹配')}
                       {(entry.mrPass || entry.mrFail) && (
                         <span className={styles.historyMR}> MR</span>
                       )}

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import GlassCard from '../layout/GlassCard'
 import type { SearchResult } from '../../../shared/types'
 import { formatElapsed } from '../../../shared/utils'
+import { t, type Lang } from '../../../shared/i18n'
 import styles from './ResultsPanel.module.css'
 
 type SortKey = 'imei' | 'machineName' | 'date' | 'scanIndex' | 'totalFiles'
@@ -9,7 +10,7 @@ type SortKey = 'imei' | 'machineName' | 'date' | 'scanIndex' | 'totalFiles'
 const DISPLAY_LIMIT = 500
 
 interface ResultsPanelProps {
-  lang: 'en' | 'zh'
+  lang: Lang
   result: SearchResult | null
   searching?: boolean
 }
@@ -72,32 +73,36 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
   const completeCount = result ? result.matches.length - incompleteCount : 0
 
   return (
-    <GlassCard title={lang === 'en' ? 'Results' : '結果'} delay={0.15}>
+    <GlassCard title={t(lang, 'Results', '結果', '结果')} delay={0.15}>
       <div className={styles.summary}>
         <span className={styles.summaryMain}>
           {!result
-            ? (lang === 'en' ? 'No search results yet' : '尚無搜尋結果')
+            ? t(lang, 'No search results yet', '尚無搜尋結果', '暂无搜索结果')
             : searching
               ? (lang === 'en'
                   ? `Searching... ${result.matches.length.toLocaleString()} matches found so far`
-                  : `搜尋中... 已找到 ${result.matches.length.toLocaleString()} 個匹配`)
+                  : lang === 'zh-TW'
+                    ? `搜尋中... 已找到 ${result.matches.length.toLocaleString()} 個匹配`
+                    : `搜索中... 已找到 ${result.matches.length.toLocaleString()} 个匹配`)
               : (lang === 'en'
                   ? `Found: ${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} IMEIs (${result.matches.length.toLocaleString()} total matches) · ${formatElapsed(result.elapsedMs)}`
-                  : `已找到：${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} 個IMEI（共 ${result.matches.length.toLocaleString()} 個匹配）· ${formatElapsed(result.elapsedMs)}`)
+                  : lang === 'zh-TW'
+                    ? `已找到：${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} 個IMEI（共 ${result.matches.length.toLocaleString()} 個匹配）· ${formatElapsed(result.elapsedMs)}`
+                    : `已找到：${uniqueFound.toLocaleString()} / ${(uniqueFound + result.missingIMEIs.length).toLocaleString()} 个IMEI（共 ${result.matches.length.toLocaleString()} 个匹配）· ${formatElapsed(result.elapsedMs)}`)
           }
         </span>
         <div className={styles.summaryDots}>
           <span className={styles.dotGroup}>
             <span className={`${styles.dot} ${styles.dotGreen}`} />
-            {completeCount.toLocaleString()} {lang === 'en' ? 'complete' : '完整'}
+            {completeCount.toLocaleString()} {t(lang, 'complete', '完整', '完成')}
           </span>
           <span className={styles.dotGroup}>
             <span className={`${styles.dot} ${styles.dotOrange}`} />
-            {incompleteCount.toLocaleString()} {lang === 'en' ? 'incomplete' : '不完整'}
+            {incompleteCount.toLocaleString()} {t(lang, 'incomplete', '不完整', '不完整')}
           </span>
           <span className={styles.dotGroup}>
             <span className={`${styles.dot} ${styles.dotRed}`} />
-            {(result?.missingIMEIs.length ?? 0).toLocaleString()} {lang === 'en' ? 'missing' : '缺少'}
+            {(result?.missingIMEIs.length ?? 0).toLocaleString()} {t(lang, 'missing', '缺少', '缺失')}
           </span>
         </div>
       </div>
@@ -108,7 +113,7 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
             <thead>
               <tr>
                 <th className={styles.th}>#</th>
-                <th className={styles.th}>{lang === 'en' ? 'Missing IMEI' : '缺少的IMEI'}</th>
+                <th className={styles.th}>{t(lang, 'Missing IMEI', '缺少的IMEI', '缺失的IMEI')}</th>
               </tr>
             </thead>
             <tbody>
@@ -130,16 +135,16 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
                   IMEI{sortIndicator('imei')}
                 </th>
                 <th className={styles.th} onClick={() => handleSort('machineName')}>
-                  {lang === 'en' ? 'Machine' : '機器'}{sortIndicator('machineName')}
+                  {t(lang, 'Machine', '機器', '机器')}{sortIndicator('machineName')}
                 </th>
                 <th className={styles.th} onClick={() => handleSort('date')}>
-                  {lang === 'en' ? 'Date' : '日期'}{sortIndicator('date')}
+                  {t(lang, 'Date', '日期', '日期')}{sortIndicator('date')}
                 </th>
                 <th className={styles.th} onClick={() => handleSort('scanIndex')}>
-                  {lang === 'en' ? 'Index' : '序號'}{sortIndicator('scanIndex')}
+                  {t(lang, 'Index', '序號', '序号')}{sortIndicator('scanIndex')}
                 </th>
                 <th className={styles.th} onClick={() => handleSort('totalFiles')}>
-                  {lang === 'en' ? 'Files' : '檔案'}{sortIndicator('totalFiles')}
+                  {t(lang, 'Files', '檔案', '文件')}{sortIndicator('totalFiles')}
                 </th>
               </tr>
             </thead>
@@ -147,7 +152,7 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
               {!result || sortedMatches.length === 0 ? (
                 <tr>
                   <td className={styles.empty} colSpan={5}>
-                    {lang === 'en' ? 'Run a search to see results' : '執行搜尋以檢視結果'}
+                    {t(lang, 'Run a search to see results', '執行搜尋以檢視結果', '运行搜索以查看结果')}
                   </td>
                 </tr>
               ) : (
@@ -186,7 +191,9 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
                         >
                           {lang === 'en'
                             ? `Showing ${DISPLAY_LIMIT} of ${sortedMatches.length.toLocaleString()} — click to show all`
-                            : `顯示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 點擊顯示全部`}
+                            : lang === 'zh-TW'
+                              ? `顯示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 點擊顯示全部`
+                              : `显示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 点击显示全部`}
                         </button>
                       </td>
                     </tr>
@@ -205,8 +212,12 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
           onClick={() => setShowMissing(!showMissing)}
         >
           {showMissing
-            ? (lang === 'en' ? 'View Matches' : '檢視匹配結果')
-            : (lang === 'en' ? `View Missing IMEIs (${result?.missingIMEIs.length ?? 0})` : `檢視缺少的IMEI (${result?.missingIMEIs.length ?? 0})`)
+            ? t(lang, 'View Matches', '檢視匹配結果', '查看匹配结果')
+            : (lang === 'en'
+                ? `View Missing IMEIs (${result?.missingIMEIs.length ?? 0})`
+                : lang === 'zh-TW'
+                  ? `檢視缺少的IMEI (${result?.missingIMEIs.length ?? 0})`
+                  : `查看缺失的IMEI (${result?.missingIMEIs.length ?? 0})`)
           }
         </button>
         <button
@@ -225,7 +236,7 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
             )
           }}
         >
-          {lang === 'en' ? 'Save Missing IMEIs' : '儲存缺少的IMEI'}
+          {t(lang, 'Save Missing IMEIs', '儲存缺少的IMEI', '保存缺失的IMEI')}
         </button>
       </div>
     </GlassCard>
