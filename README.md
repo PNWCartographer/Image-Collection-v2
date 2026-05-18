@@ -119,7 +119,19 @@ For ambiguous date formats (MM/DD vs DD/MM), the parser samples all rows to dete
 - **Orange**: 80%+ rows parsed (some values unrecognized)
 - **Red**: less than 80% parsed (column detection may be unreliable)
 
-IMEIs with missing or unrecognized Machine/Date values automatically fall back to the standard broad scan — no results are ever lost, those IMEIs just search slower.
+**Auto-populate date range**: When a date column is detected, the Source panel's Start/End date fields are automatically filled with the earliest and latest dates from the audit data. This narrows the search window and provides visual confirmation that dates were parsed correctly. You can adjust the dates manually if needed.
+
+**Partial hints**: The audit file does not need all three columns. Smart Search adapts based on what's available:
+
+| Columns available | Search behavior |
+|---|---|
+| IMEI + Machine + Date | Direct folder lookup — fastest (seconds) |
+| IMEI + Machine only | Broad scan narrowed to just the hinted machine per IMEI |
+| IMEI only | Full broad scan across all selected machines (slowest) |
+
+IMEIs with missing or unrecognized values automatically fall back to the next-broadest scan — no results are ever lost, those IMEIs just search slower.
+
+**MR PASS / FAIL searches** also benefit from Smart Search. When hints are available, MR searches go directly to `Machine/ModelRecogImages/Date/` instead of discovering all date folders first.
 
 If the detected columns are inaccurate, toggle **Smart Search OFF** to fall back to IMEI-only mode.
 

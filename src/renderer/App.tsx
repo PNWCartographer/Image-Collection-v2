@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import TitleBar from './components/layout/TitleBar'
 import StatusBar from './components/layout/StatusBar'
 import SourcePanel from './components/source/SourcePanel'
@@ -366,6 +366,22 @@ function App(): JSX.Element {
   const { percent: progressPercent, label: progressLabel, sublabel: progressSublabel } =
     buildProgressState(lang, exporting, exportProgress, progress)
 
+  // Compute suggested date range from Smart Search hints
+  const suggestedDateRange = useMemo(() => {
+    if (!smartSearch || !auditResult?.hints) return null
+    const dates = Object.values(auditResult.hints)
+      .map((h) => h.date)
+      .filter((d): d is string => !!d)
+      .sort()
+    if (dates.length === 0) return null
+    const min = dates[0]
+    const max = dates[dates.length - 1]
+    return {
+      start: `${min.substring(0, 4)}-${min.substring(4, 6)}-${min.substring(6, 8)}`,
+      end: `${max.substring(0, 4)}-${max.substring(4, 6)}-${max.substring(6, 8)}`
+    }
+  }, [smartSearch, auditResult])
+
   return (
     <div className={styles.app}>
       <TitleBar theme={theme} lang={lang} onToggleTheme={toggleTheme} />
@@ -377,6 +393,7 @@ function App(): JSX.Element {
             onToggleLang={toggleLang}
             onFoldersChange={handleFoldersChange}
             onDateRangeChange={handleDateRangeChange}
+            suggestedDateRange={suggestedDateRange}
           />
           <AuditPanel
             lang={lang}

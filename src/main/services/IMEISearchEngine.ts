@@ -88,14 +88,14 @@ function createProgressTracker(
 /**
  * Targeted search — when audit data includes Machine + Date columns,
  * go directly to root/Machine/Date/ and look for the IMEI folders.
- * Returns the list of IMEIs that couldn't be resolved (fallbacks).
+ * Returns fallback IMEIs and machine-only groups for narrowed broad scans.
  */
 async function searchTargeted(
   request: SearchRequest,
   ctx: SearchContext,
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
-): Promise<{ searched: number; fallbackImeis: string[] }> {
+): Promise<{ searched: number; fallbackImeis: string[]; machineOnlyGroups: Map<string, string[]> }> {
   const { token, matches, foundIMEIs } = ctx
   const hints = request.hints!
   const selectedSet = new Set(request.selectedFolders)
@@ -104,24 +104,30 @@ async function searchTargeted(
   const directLookups = new Map<string, string[]>()
   const fallbackImeis: string[] = []
 
+  // Partial hints: machine-only → narrow broad scan to one machine per IMEI
+  // Group by machine for a constrained broad scan
+  const machineOnlyGroups = new Map<string, string[]>()
+
   for (const imei of request.imeis) {
     const hint: AuditHint | undefined = hints[imei]
-    if (!hint?.machine || !hint?.date) {
+
+    if (hint?.machine && hint?.date) {
+      // Full hint — direct lookup
+      if (!selectedSet.has(hint.machine)) { fallbackImeis.push(imei); continue }
+      if (!isDateInRange(hint.date, request)) { fallbackImeis.push(imei); continue }
+      const key = `${hint.machine}/${hint.date}`
+      const existing = directLookups.get(key)
+      if (existing) existing.push(imei)
+      else directLookups.set(key, [imei])
+    } else if (hint?.machine && selectedSet.has(hint.machine)) {
+      // Machine-only hint — will narrow the broad scan to this machine
+      const existing = machineOnlyGroups.get(hint.machine)
+      if (existing) existing.push(imei)
+      else machineOnlyGroups.set(hint.machine, [imei])
+    } else {
+      // No usable hints — full broad scan fallback
       fallbackImeis.push(imei)
-      continue
     }
-    if (!selectedSet.has(hint.machine)) {
-      fallbackImeis.push(imei)
-      continue
-    }
-    if (!isDateInRange(hint.date, request)) {
-      fallbackImeis.push(imei)
-      continue
-    }
-    const key = `${hint.machine}/${hint.date}`
-    const existing = directLookups.get(key)
-    if (existing) existing.push(imei)
-    else directLookups.set(key, [imei])
   }
 
   const lookupEntries = [...directLookups.entries()]
@@ -216,7 +222,7 @@ async function searchTargeted(
     }
   })
 
-  return { searched, fallbackImeis }
+  return { searched, fallbackImeis, machineOnlyGroups }
 }
 
 // ── Broad scan (original search path) ──────────────────────────────
@@ -377,7 +383,7 @@ export async function searchIMEIs(
 
   // Smart Search: targeted lookups when audit file had machine + date columns
   if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
-    const { searched: directSearched, fallbackImeis } = await searchTargeted(
+    const { searched: directSearched, fallbackImeis, machineOnlyGroups } = await searchTargeted(
       request, ctx, onProgress, onMatches
     )
 
@@ -385,25 +391,42 @@ export async function searchIMEIs(
       return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, token, onProgress)
     }
 
-    // If all IMEIs were handled, done
-    if (fallbackImeis.length === 0) {
-      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, token, onProgress)
+    let totalScanned = directSearched
+
+    // Machine-only hints: run narrowed broad scans per machine
+    for (const [machine, imeisForMachine] of machineOnlyGroups) {
+      if (token.cancelled) break
+      ctx.imeiSet.clear()
+      for (const imei of imeisForMachine) ctx.imeiSet.add(imei)
+
+      const narrowRequest: SearchRequest = {
+        ...request,
+        imeis: imeisForMachine,
+        selectedFolders: [machine],
+        hints: undefined,
+        smartSearch: false
+      }
+      const scanned = await searchBroad(narrowRequest, ctx, onProgress, onMatches, 80)
+      totalScanned += scanned
     }
 
-    // Broad scan for remaining IMEIs without complete hints
-    const fallbackSet = new Set(fallbackImeis)
+    if (token.cancelled || fallbackImeis.length === 0) {
+      return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned, token, onProgress)
+    }
+
+    // Full broad scan for remaining IMEIs without any usable hints
     ctx.imeiSet.clear()
     for (const imei of fallbackImeis) ctx.imeiSet.add(imei)
 
     const fallbackRequest: SearchRequest = {
       ...request,
-      imeis: fallbackImeis.filter((imei) => fallbackSet.has(imei)),
+      imeis: fallbackImeis,
       hints: undefined,
       smartSearch: false
     }
 
-    const broadScanned = await searchBroad(fallbackRequest, ctx, onProgress, onMatches, 80)
-    return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched + broadScanned, token, onProgress)
+    const broadScanned = await searchBroad(fallbackRequest, ctx, onProgress, onMatches, 90)
+    return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned + broadScanned, token, onProgress)
   }
 
   // Standard broad scan (no hints available)
@@ -497,31 +520,57 @@ async function searchMRImages(
   const ctx = createSearchContext(request.imeis)
   const { token, imeiSet, matches, foundIMEIs, startTime } = ctx
 
-  // Phase 1: Discover date folders inside ModelRecogImages per machine
+  // Smart Search for MR: if hints have machine + date, go directly to
+  // Machine/ModelRecogImages/Date/ instead of discovering all date folders
   const dateFolders: DateFolder[] = []
 
-  await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
-    if (token.cancelled) return
-    const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
+  if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
+    const selectedSet = new Set(request.selectedFolders)
+    const addedPaths = new Set<string>()
 
-    try {
-      const entries = await readdir(mrPath, { withFileTypes: true })
+    for (const imei of request.imeis) {
+      const hint = request.hints[imei]
+      if (!hint?.machine || !hint?.date) continue
+      if (!selectedSet.has(hint.machine)) continue
+      if (!isDateInRange(hint.date, request)) continue
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        if (!DATE_REGEX.test(entry.name)) continue
-        if (!isDateInRange(entry.name, request)) continue
+      const key = `${hint.machine}/${hint.date}`
+      if (addedPaths.has(key)) continue
+      addedPaths.add(key)
 
-        dateFolders.push({
-          machine: folderName,
-          datePath: join(mrPath, entry.name),
-          dateStr: entry.name
-        })
-      }
-    } catch {
-      // ModelRecogImages not found for this machine — skip
+      dateFolders.push({
+        machine: hint.machine,
+        datePath: join(request.rootPath, hint.machine, 'ModelRecogImages', hint.date),
+        dateStr: hint.date
+      })
     }
-  })
+  }
+
+  // If no targeted MR folders, fall back to full discovery
+  if (dateFolders.length === 0) {
+    await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
+      if (token.cancelled) return
+      const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
+
+      try {
+        const entries = await readdir(mrPath, { withFileTypes: true })
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          if (!DATE_REGEX.test(entry.name)) continue
+          if (!isDateInRange(entry.name, request)) continue
+
+          dateFolders.push({
+            machine: folderName,
+            datePath: join(mrPath, entry.name),
+            dateStr: entry.name
+          })
+        }
+      } catch {
+        // ModelRecogImages not found for this machine — skip
+      }
+    })
+  }
 
   if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, token, onProgress)
 

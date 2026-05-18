@@ -29,9 +29,10 @@ interface SourcePanelProps {
   onToggleLang: () => void
   onFoldersChange: (selected: string[], rootPath: string, sourceName: string) => void
   onDateRangeChange?: (range: DateRange) => void
+  suggestedDateRange?: { start: string; end: string } | null
 }
 
-export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDateRangeChange }: SourcePanelProps): JSX.Element {
+export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDateRangeChange, suggestedDateRange }: SourcePanelProps): JSX.Element {
   // ── Source management ──
   const [sources, setSources] = useState<SourceConfig[]>([])
   const [activeSourceId, setActiveSourceId] = useState('')
@@ -139,6 +140,14 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
   useEffect(() => {
     onDateRangeChange?.({ dateStart, dateEnd })
   }, [dateStart, dateEnd, onDateRangeChange])
+
+  // ── Auto-populate date range from Smart Search hints ──
+  useEffect(() => {
+    if (suggestedDateRange) {
+      setDateStart(suggestedDateRange.start)
+      setDateEnd(suggestedDateRange.end)
+    }
+  }, [suggestedDateRange])
 
   // ── Persist toggles to active source ──
   const persistToggles = useCallback((newToggles: Record<string, boolean>) => {
