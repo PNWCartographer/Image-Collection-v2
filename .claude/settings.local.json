@@ -16,7 +16,8 @@
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\klars\\\\Documents\\\\GitHub\\\\Image-Collection-v2\" -Force | Where-Object { $_.Name -notmatch '^\\(node_modules|\\\\.git\\)$' } | Select-Object Mode, Name | Format-Table -AutoSize)",
       "Bash(git status *)",
       "Bash(dir \"Image Collection v2 Setup 1.2.0.exe\")",
-      "WebSearch"
+      "WebSearch",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).version\\)\")"
     ]
   }
 }

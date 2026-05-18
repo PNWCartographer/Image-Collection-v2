@@ -2,9 +2,9 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme.
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.3.0 — feature-complete.**
 
-Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which NAS machine folders to search, and export matched image folders to a local destination with configurable organization.
+Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
 ---
 
@@ -49,11 +49,13 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 
 Enter or browse to the NAS mount point (e.g. `Z:\`, `\\NAS_Lonestar\share`). The tool scans first-level subdirectories and populates the folder toggle grid.
 
+> **Not limited to NAS.** Any drive accessible to the PC can be searched — including local hard drives attached to SMART Grade PCs or RPCs — as long as the folder structure follows the standard `Machine → YYYYMMDD → IMEI_Index` hierarchy.
+
 - **Machine folders** (names matching `M` + digits, like `M8`, `M10`) are checked by default.
 - **Utility folders** (`audits`, `crackimages`, `GRR Images`, `version_control`) are unchecked by default.
 - `#recycle` and `$RECYCLE.BIN` are always hidden.
 
-Use **Select All / Deselect All** to bulk-toggle. **Refresh** re-scans the NAS for new or removed subfolders.
+Use **Select All / Deselect All** to bulk-toggle. **Refresh** re-scans the source for new or removed subfolders.
 
 ### Multi-Source Manager
 
@@ -414,9 +416,11 @@ Use **Add/Remove Programs** (Settings > Apps > Installed apps). The uninstaller 
 
 ## Known Limitations
 
-- The placeholder app icon (`resources/icon.ico`) is a generated teal square. Replace with a production icon before final distribution.
-- Date range filtering operates on folder date names (`YYYYMMDD`). Intra-day time filtering is not supported — the NAS folder structure does not encode time.
-- Export summary report with color-coded CSV/Excel output is planned but not yet implemented.
+- Date range filtering operates on folder date names (`YYYYMMDD`). Intra-day time filtering is not supported — the folder structure does not encode time.
+
+### Roadmap
+
+- Export summary report with color-coded CSV/Excel output.
 
 ---
 
