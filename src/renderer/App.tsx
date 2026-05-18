@@ -382,6 +382,16 @@ function App(): JSX.Element {
     }
   }, [smartSearch, auditResult])
 
+  // Compute unique machines from Smart Search hints for auto-selecting folders
+  const suggestedMachines = useMemo(() => {
+    if (!smartSearch || !auditResult?.hints) return null
+    const machines = new Set<string>()
+    for (const hint of Object.values(auditResult.hints)) {
+      if (hint.machine) machines.add(hint.machine)
+    }
+    return machines.size > 0 ? Array.from(machines) : null
+  }, [smartSearch, auditResult])
+
   return (
     <div className={styles.app}>
       <TitleBar theme={theme} lang={lang} onToggleTheme={toggleTheme} />
@@ -394,6 +404,7 @@ function App(): JSX.Element {
             onFoldersChange={handleFoldersChange}
             onDateRangeChange={handleDateRangeChange}
             suggestedDateRange={suggestedDateRange}
+            suggestedMachines={suggestedMachines}
           />
           <AuditPanel
             lang={lang}

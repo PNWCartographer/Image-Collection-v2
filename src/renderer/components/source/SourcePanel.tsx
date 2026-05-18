@@ -30,9 +30,10 @@ interface SourcePanelProps {
   onFoldersChange: (selected: string[], rootPath: string, sourceName: string) => void
   onDateRangeChange?: (range: DateRange) => void
   suggestedDateRange?: { start: string; end: string } | null
+  suggestedMachines?: string[] | null
 }
 
-export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDateRangeChange, suggestedDateRange }: SourcePanelProps): JSX.Element {
+export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDateRangeChange, suggestedDateRange, suggestedMachines }: SourcePanelProps): JSX.Element {
   // ── Source management ──
   const [sources, setSources] = useState<SourceConfig[]>([])
   const [activeSourceId, setActiveSourceId] = useState('')
@@ -148,6 +149,23 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       setDateEnd(suggestedDateRange.end)
     }
   }, [suggestedDateRange])
+
+  // ── Auto-select machine folders from Smart Search hints ──
+  const appliedMachinesRef = useRef<string[] | null>(null)
+
+  useEffect(() => {
+    if (!suggestedMachines || suggestedMachines.length === 0 || folders.length === 0) return
+    // Only apply once per new set of hints (don't re-apply on folder refresh)
+    if (appliedMachinesRef.current === suggestedMachines) return
+    appliedMachinesRef.current = suggestedMachines
+
+    const machineSet = new Set(suggestedMachines)
+    const newToggles: Record<string, boolean> = {}
+    for (const folder of folders) {
+      newToggles[folder.name] = machineSet.has(folder.name)
+    }
+    setToggles(newToggles)
+  }, [suggestedMachines, folders])
 
   // ── Persist toggles to active source ──
   const persistToggles = useCallback((newToggles: Record<string, boolean>) => {
