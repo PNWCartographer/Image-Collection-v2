@@ -10,8 +10,8 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 
 1. **Install** — run `Image Collection v2 Setup X.X.X.exe` and follow the prompts.
 2. **Set source** — click **Browse** next to Shared Folder and select the NAS root (e.g. `Z:\`). Machine folders populate automatically.
-3. **Import audit list** — click **Browse** in the Audit panel or drag-and-drop a CSV / XLSX file. **For best results, include IMEI, Machine, and Date columns** — Smart Search will auto-detect them and search in seconds instead of minutes.
-4. **Verify detection** — check the Audit panel for green badges confirming Machine and Date columns were detected. If detection fails or data is inaccurate, toggle Smart Search OFF to fall back to IMEI-only mode.
+3. **Import audit list** — click **Browse** in the Audit panel or drag-and-drop a CSV / XLSX file. **For best results, include IMEI, Machine, and Date columns** — Smart Search will auto-detect them, auto-select the relevant machine folders, auto-fill the date range, and search in seconds instead of minutes.
+4. **Verify detection** — check the Audit panel for green badges confirming Machine and Date columns were detected. Verify that only the relevant machine folders are checked in the Source panel. If detection fails or data is inaccurate, toggle Smart Search OFF to fall back to IMEI-only mode.
 5. **Configure settings** — choose Action, Image Type, Organize mode, and set a Destination.
 6. **Search** — click **Start Search**. Matches stream into the results table in real time.
 7. **Export** — review results, then click **Export Results**. Progress shows in the status bar.
@@ -23,7 +23,7 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 | Feature | Description |
 |---|---|
 | **Multi-format audit import** | CSV, XLSX, XLS, TXT — auto-detects IMEI column and skips headers |
-| **Smart Search** | Auto-detects Machine and Date columns in audit files for targeted folder lookups instead of full NAS scan |
+| **Smart Search** | Auto-detects Machine and Date columns in audit files for targeted folder lookups instead of full NAS scan; auto-selects machine folders and fills date range |
 | **Parallel NAS search** | 48 concurrent folder reads, tuned for RS3617RPxs (12-drive RAID 5, 1 Gbps) |
 | **Parallel export** | 8 folders x 4 files = 32 concurrent copies, saturates the 1 Gbps pipe |
 | **6 organization modes** | Flat, By Machine, By Date, Machine-Date, Date-Machine, By IMEI |
@@ -36,7 +36,7 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 | **Export logging** | Detailed per-file logs with file sizes and throughput; keeps 3 most recent logs |
 | **Missing IMEI report** | View and save the list of audit IMEIs not found on the NAS |
 | **Dark / Light theme** | Liquid Glass theming in both variants; persists across sessions |
-| **Bilingual** | English and Chinese (toggle visible in the Source panel) |
+| **Trilingual** | English, Traditional Chinese, and Simplified Chinese — cycle with the language button in the Source panel |
 | **Settings persistence** | All preferences saved via electron-store and restored on next launch |
 
 ---
@@ -123,6 +123,8 @@ Any trailing time component (e.g. `11:57`, `11:57:00`, or ISO `T` separator) is 
 - **Red**: less than 80% parsed (column detection may be unreliable)
 
 **Auto-populate date range**: When a date column is detected, the Source panel's Start/End date fields are automatically filled with the earliest and latest dates from the audit data. This narrows the search window and provides visual confirmation that dates were parsed correctly. You can adjust the dates manually if needed.
+
+**Auto-select machine folders**: When a machine column is detected, the Source panel automatically checks only the machine folders referenced in the audit data and unchecks the rest. For example, if the audit file only contains M14, M21, and M22 entries, only those three folders will be toggled on. This avoids scanning irrelevant machines and speeds up broad-scan fallback. If no machine column is detected, all machine folders remain in their previous toggle state.
 
 **Partial hints**: The audit file does not need all three columns. Smart Search adapts based on what's available:
 
