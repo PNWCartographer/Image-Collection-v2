@@ -11,11 +11,11 @@ function inferSourceName(path: string): string {
 }
 
 const FOLDER_ZH: Record<string, string> = {
-  audits: '审计',
-  crackimages: '裂纹图像',
-  'GRR Images': 'GRR 图像',
+  audits: '稽核',
+  crackimages: '裂紋圖像',
+  'GRR Images': 'GRR 圖像',
   version_control: '版本控制',
-  ModelRecogImages: '模型识别图像',
+  ModelRecogImages: '模型辨識圖像',
   Bin: '回收站',
 }
 
@@ -212,7 +212,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
     if (duplicate) {
       const msg = lang === 'en'
         ? `A source already exists for this path ("${duplicate.name}"). Add anyway?`
-        : `此路径已有数据源（"${duplicate.name}"）。仍要添加吗？`
+        : `此路徑已有資料來源（「${duplicate.name}」）。仍要新增嗎？`
       if (!window.confirm(msg)) return
     }
 
@@ -237,7 +237,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
     const name = activeSource?.name || ''
     const msg = lang === 'en'
       ? `Remove source "${name}"? Its saved folder toggles will be lost.`
-      : `删除数据源"${name}"？其保存的文件夹选择状态将丢失。`
+      : `刪除資料來源「${name}」？其儲存的資料夾選擇狀態將遺失。`
     if (!window.confirm(msg)) return
     const updated = sources.filter((s) => s.id !== activeSourceId)
     setSources(updated)
@@ -338,11 +338,11 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
   }, [addingSource])
 
   return (
-    <GlassCard title={lang === 'en' ? 'Source' : '来源'} delay={0}>
+    <GlassCard title={lang === 'en' ? 'Source' : '來源'} delay={0}>
       {/* ── Source selector row ── */}
       <div className={styles.sourceRow}>
         <span className={styles.label}>
-          {lang === 'en' ? 'Source' : '数据源'}
+          {lang === 'en' ? 'Source' : '資料來源'}
         </span>
         {addingSource ? (
           <div className={styles.sourceNameWrap}>
@@ -356,13 +356,13 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
                 if (e.key === 'Enter') handleSaveNewSource()
                 if (e.key === 'Escape') { setAddingSource(false); setNewSourceName('') }
               }}
-              placeholder={lang === 'en' ? 'Source name...' : '数据源名称...'}
+              placeholder={lang === 'en' ? 'Source name...' : '資料來源名稱...'}
             />
             <button
               className={styles.sourceBtn}
               onClick={handleSaveNewSource}
               disabled={!newSourceName.trim()}
-              title={lang === 'en' ? 'Save' : '保存'}
+              title={lang === 'en' ? 'Save' : '儲存'}
             >
               ✓
             </button>
@@ -382,7 +382,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
               onChange={(e) => handleSourceChange(e.target.value)}
             >
               {sources.length === 0 && (
-                <option value="">{lang === 'en' ? 'No saved sources' : '无保存数据源'}</option>
+                <option value="">{lang === 'en' ? 'No saved sources' : '無已儲存資料來源'}</option>
               )}
               {sources.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -392,7 +392,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
               className={styles.sourceBtn}
               onClick={() => setAddingSource(true)}
               disabled={!folderPath}
-              title={lang === 'en' ? 'Save current path as new source' : '将当前路径保存为新数据源'}
+              title={lang === 'en' ? 'Save current path as new source' : '將目前路徑儲存為新資料來源'}
             >
               +
             </button>
@@ -400,13 +400,13 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
               className={styles.sourceBtn}
               onClick={handleDeleteSource}
               disabled={sources.length === 0}
-              title={lang === 'en' ? 'Remove this source' : '删除此数据源'}
+              title={lang === 'en' ? 'Remove this source' : '刪除此資料來源'}
             >
               −
             </button>
             <Tooltip text={lang === 'en'
               ? 'Save and switch between multiple NAS or shared folder roots. Each source remembers its own folder toggle states.'
-              : '保存并切换多个 NAS 或共享文件夹根目录。每个数据源独立记住其文件夹选择状态。'}
+              : '儲存並切換多個 NAS 或共享資料夾根目錄。每個資料來源獨立記住其資料夾選擇狀態。'}
             />
           </>
         )}
@@ -416,7 +416,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       <div className={styles.topRow}>
         <div className={styles.pathRow}>
           <span className={styles.label}>
-            {lang === 'en' ? 'Shared Folder' : '共享文件夹'}
+            {lang === 'en' ? 'Shared Folder' : '共享資料夾'}
           </span>
           <div className={styles.pathInput}>
             <input
@@ -425,10 +425,10 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               onKeyDown={handlePathSubmit}
-              placeholder={lang === 'en' ? 'Select shared folder root...' : '选择共享文件夹根目录...'}
+              placeholder={lang === 'en' ? 'Select shared folder root...' : '選擇共享資料夾根目錄...'}
             />
             <button className={styles.browseBtn} onClick={handleBrowse}>
-              {lang === 'en' ? 'Browse' : '浏览'}
+              {lang === 'en' ? 'Browse' : '瀏覽'}
             </button>
           </div>
         </div>
@@ -440,7 +440,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       {/* ── Folder grid ── */}
       <div className={styles.gridHeader}>
         <span className={styles.label}>
-          {lang === 'en' ? 'Search Folders' : '搜索文件夹'}
+          {lang === 'en' ? 'Search Folders' : '搜尋資料夾'}
           {folders.length > 0 && (
             <span className={styles.folderCount}> ({folders.length})</span>
           )}
@@ -448,21 +448,21 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
         <div className={styles.gridActions}>
           <button className={styles.textBtn} onClick={handleSelectAll} disabled={folders.length === 0}>
             {allChecked
-              ? (lang === 'en' ? 'Deselect All' : '取消全选')
-              : (lang === 'en' ? 'Select All' : '全选')}
+              ? (lang === 'en' ? 'Deselect All' : '取消全選')
+              : (lang === 'en' ? 'Select All' : '全選')}
           </button>
           <Tooltip text={lang === 'en'
             ? 'Toggle all detected folders on or off for searching.'
-            : '切换所有检测到的文件夹的搜索状态。'}
+            : '切換所有偵測到的資料夾的搜尋狀態。'}
           />
           <button className={styles.textBtn} onClick={handleRefresh} disabled={!folderPath || scanning}>
             {scanning
-              ? (lang === 'en' ? '⟳ Scanning...' : '⟳ 扫描中...')
-              : (lang === 'en' ? '⟳ Refresh' : '⟳ 刷新')}
+              ? (lang === 'en' ? '⟳ Scanning...' : '⟳ 掃描中...')
+              : (lang === 'en' ? '⟳ Refresh' : '⟳ 重新整理')}
           </button>
           <Tooltip text={lang === 'en'
             ? 'Re-scan the shared folder to detect any new or removed subfolders since last check.'
-            : '重新扫描共享文件夹以检测自上次检查以来新增或删除的子文件夹。'}
+            : '重新掃描共享資料夾以偵測自上次檢查以來新增或刪除的子資料夾。'}
           />
         </div>
       </div>
@@ -488,8 +488,8 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       ) : (
         <div className={styles.emptyGrid}>
           {folderPath
-            ? (lang === 'en' ? 'No subfolders found' : '未找到子文件夹')
-            : (lang === 'en' ? 'Select a shared folder to scan' : '选择共享文件夹以扫描')}
+            ? (lang === 'en' ? 'No subfolders found' : '未找到子資料夾')
+            : (lang === 'en' ? 'Select a shared folder to scan' : '選擇共享資料夾以掃描')}
         </div>
       )}
 
@@ -497,7 +497,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       <div className={styles.dateSection}>
         <div className={styles.dateRow}>
           <span className={styles.label}>
-            {lang === 'en' ? 'Start Date' : '开始日期'}
+            {lang === 'en' ? 'Start Date' : '開始日期'}
           </span>
           <input
             type="date"
@@ -508,7 +508,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
         </div>
         <div className={styles.dateRow}>
           <span className={styles.label}>
-            {lang === 'en' ? 'End Date' : '结束日期'}
+            {lang === 'en' ? 'End Date' : '結束日期'}
           </span>
           <input
             type="date"
@@ -518,12 +518,12 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
           />
           <Tooltip text={lang === 'en'
             ? 'Restrict the search to date folders within the specified range. Leave blank to search all dates.'
-            : '将搜索限制在指定范围内的日期文件夹。留空则搜索所有日期。'}
+            : '將搜尋限制在指定範圍內的日期資料夾。留空則搜尋所有日期。'}
           />
         </div>
         {dateStart && dateEnd && dateStart > dateEnd && (
           <span className={styles.dateWarn}>
-            {lang === 'en' ? 'Start date is after end date — no results will match' : '开始日期在结束日期之后 — 将无匹配结果'}
+            {lang === 'en' ? 'Start date is after end date — no results will match' : '開始日期在結束日期之後 — 將無匹配結果'}
           </span>
         )}
       </div>

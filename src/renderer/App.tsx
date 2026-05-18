@@ -32,30 +32,30 @@ function buildStatusMessage(s: StatusInputs): string {
     const ep = s.exportProgress
     return s.lang === 'en'
       ? `Exporting ${ep.currentIMEI} · ${ep.exported} exported · ${ep.skipped} skipped`
-      : `正在导出 ${ep.currentIMEI} · ${ep.exported} 已导出 · ${ep.skipped} 已跳过`
+      : `正在匯出 ${ep.currentIMEI} · ${ep.exported} 已匯出 · ${ep.skipped} 已略過`
   }
-  if (s.exporting) return s.lang === 'en' ? 'Preparing export...' : '正在准备导出...'
+  if (s.exporting) return s.lang === 'en' ? 'Preparing export...' : '正在準備匯出...'
   if (s.exportResult) {
     return s.lang === 'en'
       ? `Export complete · ${s.exportResult.exported} exported · ${s.exportResult.skipped} skipped · ${s.exportResult.failed} failed · ${formatElapsed(s.exportResult.elapsedMs)}`
-      : `导出完成 · ${s.exportResult.exported} 已导出 · ${s.exportResult.skipped} 已跳过 · ${s.exportResult.failed} 失败 · ${formatElapsed(s.exportResult.elapsedMs)}`
+      : `匯出完成 · ${s.exportResult.exported} 已匯出 · ${s.exportResult.skipped} 已略過 · ${s.exportResult.failed} 失敗 · ${formatElapsed(s.exportResult.elapsedMs)}`
   }
   if (s.searching && s.progress) {
     return s.lang === 'en'
       ? `Searching ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} matches`
-      : `正在搜索 ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} 个匹配`
+      : `正在搜尋 ${s.progress.currentMachine}/${s.progress.currentDate} · ${s.progress.matchesSoFar} 個匹配`
   }
-  if (s.searching) return s.lang === 'en' ? 'Preparing search...' : '正在准备搜索...'
+  if (s.searching) return s.lang === 'en' ? 'Preparing search...' : '正在準備搜尋...'
   if (s.searchResult) {
     const unique = new Set(s.searchResult.matches.map((m) => m.imei)).size
     return s.lang === 'en'
       ? `Search complete · ${unique.toLocaleString()} IMEIs found · ${s.searchResult.matches.length.toLocaleString()} matches · ${formatElapsed(s.searchResult.elapsedMs)}`
-      : `搜索完成 · 找到 ${unique.toLocaleString()} 个IMEI · ${s.searchResult.matches.length.toLocaleString()} 个匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
+      : `搜尋完成 · 找到 ${unique.toLocaleString()} 個IMEI · ${s.searchResult.matches.length.toLocaleString()} 個匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
   }
   if (s.auditResult) {
-    return `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} ${s.lang === 'en' ? 'folders selected' : '个文件夹已选择'}`
+    return `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} ${s.lang === 'en' ? 'folders selected' : '個資料夾已選擇'}`
   }
-  return s.lang === 'en' ? 'Ready' : '就绪'
+  return s.lang === 'en' ? 'Ready' : '就緒'
 }
 
 function buildProgressState(
@@ -68,24 +68,24 @@ function buildProgressState(
     return {
       percent: exportProgress?.percent ?? 0,
       label: exportProgress
-        ? (lang === 'en' ? `Exporting ${exportProgress.currentFolder}` : `正在导出 ${exportProgress.currentFolder}`)
-        : (lang === 'en' ? 'Preparing export...' : '准备导出中...'),
+        ? (lang === 'en' ? `Exporting ${exportProgress.currentFolder}` : `正在匯出 ${exportProgress.currentFolder}`)
+        : (lang === 'en' ? 'Preparing export...' : '準備匯出中...'),
       sublabel: exportProgress
         ? (lang === 'en'
             ? `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} items · ${exportProgress.exported} exported`
-            : `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 项 · ${exportProgress.exported} 已导出`)
+            : `${exportProgress.exported + exportProgress.skipped + exportProgress.failed}/${exportProgress.totalItems} 項 · ${exportProgress.exported} 已匯出`)
         : undefined
     }
   }
   return {
     percent: progress?.percent ?? 0,
     label: progress
-      ? (lang === 'en' ? `Scanning ${progress.currentMachine}/${progress.currentDate}` : `正在扫描 ${progress.currentMachine}/${progress.currentDate}`)
-      : (lang === 'en' ? 'Preparing...' : '准备中...'),
+      ? (lang === 'en' ? `Scanning ${progress.currentMachine}/${progress.currentDate}` : `正在掃描 ${progress.currentMachine}/${progress.currentDate}`)
+      : (lang === 'en' ? 'Preparing...' : '準備中...'),
     sublabel: progress
       ? (lang === 'en'
           ? `${progress.foldersScanned}/${progress.totalFolders} folders · ${progress.matchesSoFar} matches`
-          : `${progress.foldersScanned}/${progress.totalFolders} 个文件夹 · ${progress.matchesSoFar} 个匹配`)
+          : `${progress.foldersScanned}/${progress.totalFolders} 個資料夾 · ${progress.matchesSoFar} 個匹配`)
       : undefined
   }
 }

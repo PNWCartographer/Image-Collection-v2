@@ -55,7 +55,7 @@ export default function ActionButtons({
           className={styles.cancel}
           onClick={onCancel}
         >
-          {lang === 'en' ? 'Cancel Search' : '取消搜索'}
+          {lang === 'en' ? 'Cancel Search' : '取消搜尋'}
         </button>
       ) : (
         <button
@@ -63,7 +63,7 @@ export default function ActionButtons({
           onClick={onSearch}
           disabled={!canSearch}
         >
-          {lang === 'en' ? 'Start Search' : '开始搜索'}
+          {lang === 'en' ? 'Start Search' : '開始搜尋'}
         </button>
       )}
       {exporting ? (
@@ -71,7 +71,7 @@ export default function ActionButtons({
           className={styles.cancel}
           onClick={onCancelExport}
         >
-          {lang === 'en' ? 'Cancel Export' : '取消导出'}
+          {lang === 'en' ? 'Cancel Export' : '取消匯出'}
         </button>
       ) : (
         <button
@@ -79,7 +79,7 @@ export default function ActionButtons({
           onClick={onExport}
           disabled={!canExport}
         >
-          {lang === 'en' ? 'Export Results' : '导出结果'}
+          {lang === 'en' ? 'Export Results' : '匯出結果'}
         </button>
       )}
       <button className={styles.secondary} onClick={onClear}>
@@ -92,9 +92,9 @@ export default function ActionButtons({
           className={styles.historyBtn}
           onClick={() => setHistoryOpen(!historyOpen)}
           disabled={searchHistory.length === 0}
-          title={lang === 'en' ? 'Recent searches' : '最近搜索'}
+          title={lang === 'en' ? 'Recent searches' : '最近搜尋'}
         >
-          {lang === 'en' ? 'History' : '历史'}
+          {lang === 'en' ? 'History' : '歷史'}
           {searchHistory.length > 0 && (
             <span className={styles.historyBadge}>{searchHistory.length}</span>
           )}
@@ -102,7 +102,7 @@ export default function ActionButtons({
         {historyOpen && searchHistory.length > 0 && (
           <div className={styles.historyDropdown}>
             <div className={styles.historyTitle}>
-              {lang === 'en' ? 'Recent Searches' : '最近搜索'}
+              {lang === 'en' ? 'Recent Searches' : '最近搜尋'}
             </div>
             {searchHistory.map((entry) => {
               const uniqueFound = entry.matchCount > 0
@@ -125,7 +125,7 @@ export default function ActionButtons({
                     <span className={styles.historyStats}>
                       {uniqueFound} IMEIs
                       {' · '}
-                      {entry.matchCount.toLocaleString()} {lang === 'en' ? 'matches' : '匹配'}
+                      {entry.matchCount.toLocaleString()} {lang === 'en' ? 'matches' : '個匹配'}
                       {(entry.mrPass || entry.mrFail) && (
                         <span className={styles.historyMR}> MR</span>
                       )}

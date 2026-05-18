@@ -27,9 +27,9 @@ const TEXT = {
     button: 'Try Again'
   },
   zh: {
-    heading: '出现错误',
-    fallback: '发生了意外错误。',
-    button: '重试'
+    heading: '發生錯誤',
+    fallback: '發生了意外錯誤。',
+    button: '重試'
   }
 }
 

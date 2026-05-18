@@ -17,7 +17,7 @@ export default function StatusBar({ message, showLogLink, onOpenLogs, lang = 'en
       <div className={styles.right}>
         {showLogLink && onOpenLogs && (
           <button className={styles.logLink} onClick={onOpenLogs}>
-            {lang === 'en' ? 'View Log' : '查看日志'}
+            {lang === 'en' ? 'View Log' : '檢視日誌'}
           </button>
         )}
         <span className={styles.version}>v{APP_VERSION}</span>

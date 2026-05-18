@@ -13,7 +13,7 @@ export default function TitleBar({ theme, lang, onToggleTheme }: TitleBarProps):
         <span className={styles.title}>Image Collection v2</span>
       </div>
       <div className={styles.right}>
-        <button className={styles.themeBtn} onClick={onToggleTheme} title={lang === 'en' ? 'Toggle theme' : '切换主题'}>
+        <button className={styles.themeBtn} onClick={onToggleTheme} title={lang === 'en' ? 'Toggle theme' : '切換主題'}>
           {theme === 'dark' ? '☀' : '☾'}
         </button>
         <button
@@ -33,7 +33,7 @@ export default function TitleBar({ theme, lang, onToggleTheme }: TitleBarProps):
         <button
           className={`${styles.controlBtn} ${styles.closeBtn}`}
           onClick={() => window.electronAPI.windowClose()}
-          title={lang === 'en' ? 'Close' : '关闭'}
+          title={lang === 'en' ? 'Close' : '關閉'}
         >
           ✕
         </button>
