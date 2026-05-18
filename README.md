@@ -258,6 +258,12 @@ After a search completes, the results panel shows:
 
 A match is flagged as incomplete (orange dot) when its file count is less than 50% of the median file count across all matches. This catches IMEI folders that exist but contain fewer images than typical.
 
+### Error Feedback
+
+If a search or export encounters an error (network drop, unreachable destination, permission issue), an error banner appears with the specific message. The banner auto-clears when the next operation starts, or can be dismissed manually.
+
+If folders were inaccessible during a search, the status bar shows the count (e.g. "3 access errors"). This distinguishes genuinely missing IMEIs from those that couldn't be checked due to network or permission issues.
+
 ---
 
 ## Export Logging

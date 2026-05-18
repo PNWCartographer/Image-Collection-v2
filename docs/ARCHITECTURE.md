@@ -65,7 +65,6 @@ interface FolderScanResult {
   folders: {
     name: string;
     path: string;
-    isDateFolder: boolean;    // matches /^\d{8}$/
     isMachineFolder: boolean; // matches /^M\d+$/i
   }[];
 }
@@ -134,7 +133,7 @@ interface SearchMatch {
   jpegCount: number;
   otherCount: number;
   totalFiles: number;
-  matchType?: 'standard' | 'mr-pass' | 'mr-fail';
+  matchType?: 'mr-pass' | 'mr-fail';  // undefined for standard matches
   mrFolder?: string;             // Brand-Model folder or 'Error-Error'
 }
 
@@ -142,8 +141,8 @@ interface SearchResult {
   matches: SearchMatch[];
   missingIMEIs: string[];        // audit list entries with no match
   totalSearched: number;
+  scanErrors: number;            // folders that failed to read (network/permission)
   elapsedMs: number;
-  folderCount: number;
 }
 
 // IPC Channels:
@@ -269,7 +268,8 @@ by-imei:        dest/{IMEI}/{machine}_{date}_{index}/
 **File operations:**
 - **Copy**: Recursive `copyFolderParallel()` with file-level concurrency and image type filtering
 - **Move**: Copy first, then `rm()` source on success. MR images are always copied (never deleted from shared `ModelRecogImages/`)
-- **AI Images Only**: Pre-checks `FD/` subfolder existence via `fs.access()`; returns null (counted as failed) if missing
+- **AI Images Only**: Pre-checks `FD/` subfolder existence via `pathExists()`; returns null (counted as failed) if missing
+- **Destination validation**: `mkdir(destination, { recursive: true })` runs before any copy/move work starts; throws immediately if the path is inaccessible
 - **Duplicate handling**: `skip` checks destination existence before copy; `overwrite` removes existing destination first
 
 ### 3.5 Logger
@@ -362,7 +362,6 @@ App
 | `window:minimize` | Renderer → Main | Fire-and-forget | Minimize window |
 | `window:maximize` | Renderer → Main | Fire-and-forget | Toggle maximize/restore |
 | `window:close` | Renderer → Main | Fire-and-forget | Close window |
-| `ping` | Renderer → Main | Request/Response | Health check (returns 'pong') |
 
 ---
 
@@ -394,7 +393,8 @@ image-collection-v2/
 │   │   ├── App.tsx                # Root component, state management
 │   │   ├── App.module.css
 │   │   ├── styles/
-│   │   │   └── globals.css        # CSS variables, global styles, themes
+│   │   │   ├── globals.css        # CSS variables, global styles, themes
+│   │   │   └── controls.module.css # Shared input/button styles (composed by panels)
 │   │   ├── hooks/
 │   │   │   └── useClickOutside.ts # Shared hook for dropdown dismiss
 │   │   └── components/
@@ -476,17 +476,51 @@ const MR_FAIL_FOLDER = 'error-error';   // case-insensitive match
 
 ### Date Folder Detection
 ```typescript
-const DATE_REGEX = /^\d{8}$/;  // Matches YYYYMMDD
+// Shared constant from src/shared/utils.ts
+const DATE_FOLDER_REGEX = /^\d{8}$/;  // Matches YYYYMMDD
 ```
 
 ### Cancellation Pattern
 ```typescript
 // Per-operation token pattern — used in both search and export engines.
-// Each new operation creates a fresh token; calling cancel() marks only the
-// active token, so stale operations are unaffected.
-let activeToken: CancelToken = { cancelled: false };
+// Starting a new operation auto-cancels any in-flight operation, then creates
+// a fresh token. Calling cancel() marks only the active token.
+function createSearchContext(imeis: string[]): SearchContext {
+  activeToken.cancelled = true;       // Cancel previous operation
+  const token = { cancelled: false };
+  activeToken = token;
+  return { token, /* ... */ };
+}
 export function cancelSearch(): void { activeToken.cancelled = true; }
 ```
+
+### Scan Error Tracking
+```typescript
+// SearchContext tracks folders that failed to read (network drops, permission
+// errors) separately from missing IMEIs. The count surfaces in the status bar
+// so users know some "missing" IMEIs may be due to access failures, not
+// genuinely absent data.
+interface SearchContext {
+  // ...
+  scanErrors: number;   // incremented in catch blocks during folder scans
+}
+```
+
+### CSS Architecture
+```
+globals.css        — Design tokens: --blur-glass, --blur-subtle, --focus-ring, etc.
+controls.module.css — Shared .input / .browseBtn styles (CSS Modules composes)
+*.module.css       — Panel-level styles compose from controls.module.css
+```
+
+### Error Feedback
+Search and export IPC failures surface via an in-app error banner (App.tsx)
+instead of being silently swallowed. The banner auto-clears on the next operation.
+
+### Destination Validation
+ExportEngine validates the destination path is writable (`mkdir` with
+`recursive: true`) before starting any file operations, failing fast with a
+descriptive error instead of copying partial results.
 
 ### Shared Concurrency Pool
 ```typescript
