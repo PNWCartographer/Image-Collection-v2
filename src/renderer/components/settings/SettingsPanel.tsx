@@ -160,6 +160,20 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
     return () => clearTimeout(timer)
   }, [settings, loaded])
 
+  const [orgDirection, setOrgDirection] = useState<'up' | 'down'>('up')
+
+  const handleOrgToggle = useCallback(() => {
+    setOrgOpen((prev) => {
+      if (!prev && orgRef.current) {
+        const rect = orgRef.current.getBoundingClientRect()
+        const spaceAbove = rect.top
+        const spaceBelow = window.innerHeight - rect.bottom
+        setOrgDirection(spaceBelow >= 400 ? 'down' : spaceAbove >= spaceBelow ? 'up' : 'down')
+      }
+      return !prev
+    })
+  }, [])
+
   const closeOrgDropdown = useCallback(() => setOrgOpen(false), [])
   useClickOutside(orgRef, closeOrgDropdown)
 
@@ -204,13 +218,13 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
             <span className={styles.orgLabel}>{lang === 'en' ? 'Organize' : '整理'}</span>
             <button
               className={styles.orgTrigger}
-              onClick={() => setOrgOpen(!orgOpen)}
+              onClick={handleOrgToggle}
             >
               {selectedOrgLabel}
               <span className={styles.orgArrow}>▾</span>
             </button>
             {orgOpen && (
-              <div className={styles.orgDropdown}>
+              <div className={`${styles.orgDropdown} ${orgDirection === 'down' ? styles.orgDropdownDown : ''}`}>
                 {ORGANIZE_OPTIONS.map((opt) => (
                   <div
                     key={opt.value}
