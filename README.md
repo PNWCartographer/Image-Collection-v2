@@ -128,6 +128,8 @@ For **MR image exports**, each IMEI gets its own folder containing the matched `
 | Machine > Date | `dest/M8/20260515/350002267153742/Samsung-Galaxy_S24.png` |
 | By IMEI | `dest/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
 
+> **Tip:** Organize mode is independent of the search — you can change it after a search completes and before exporting. The export will use whichever mode is selected at the time you click **Export Results**.
+
 ### Duplicates
 
 | Value | Behavior |
