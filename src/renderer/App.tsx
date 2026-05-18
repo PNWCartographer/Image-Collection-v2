@@ -489,7 +489,7 @@ function App(): JSX.Element {
 
       <StatusBar
         message={statusMsg}
-        showLogLink={exportResult !== null}
+        showLogLink
         onOpenLogs={() => window.electronAPI.openLogsFolder()}
         lang={lang}
       />
