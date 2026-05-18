@@ -41,5 +41,5 @@
 }
 
 .logLink:hover {
-  background: rgba(10, 186, 181, 0.12);
+  background: var(--bg-dropdown-active);
 }

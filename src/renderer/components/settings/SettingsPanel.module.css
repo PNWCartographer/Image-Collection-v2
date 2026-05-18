@@ -33,7 +33,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  z-index: 200;
 }
 
 .orgLabel {
@@ -167,7 +166,7 @@
   align-items: center;
   justify-content: center;
   z-index: 20000;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(var(--blur-overlay));
 }
 
 .modal {
@@ -229,7 +228,7 @@
   border: none;
   border-radius: var(--radius-xl);
   padding: 8px 24px;
-  color: #ffffff;
+  color: var(--text-on-accent);
   font-family: var(--font-family);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);

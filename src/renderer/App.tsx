@@ -286,6 +286,7 @@ function App(): JSX.Element {
         scanIndexFilter: settings.scanIndex,
         mrPass: settings.mrPass,
         mrFail: settings.mrFail,
+        aiImages: settings.aiImages,
         matchCount: result.matches.length,
         missingCount: result.missingIMEIs.length,
         elapsedMs: result.elapsedMs

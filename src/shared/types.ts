@@ -141,6 +141,7 @@ export interface SearchHistoryEntry {
   scanIndexFilter: 'all' | 'first_only'
   mrPass: boolean
   mrFail: boolean
+  aiImages: boolean
   matchCount: number
   missingCount: number
   elapsedMs: number

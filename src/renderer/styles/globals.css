@@ -15,6 +15,13 @@
   --blur-glass: 20px;
   --blur-subtle: 10px;
   --focus-ring: rgba(10, 186, 181, 0.15);
+  --accent-shadow: rgba(10, 186, 181, 0.3);
+  --blur-overlay: 4px;
+
+  --status-green-bg: rgba(52, 199, 89, 0.15);
+  --status-orange-bg: rgba(255, 149, 0, 0.15);
+  --status-red-bg: rgba(255, 59, 48, 0.15);
+  --status-red-border: rgba(255, 59, 48, 0.25);
 
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;

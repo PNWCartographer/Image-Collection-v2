@@ -71,5 +71,5 @@
 
 .closeBtn:hover {
   background: var(--status-red);
-  color: white;
+  color: var(--text-on-accent);
 }

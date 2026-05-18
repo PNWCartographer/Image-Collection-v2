@@ -296,6 +296,7 @@ The last 5 completed searches are stored and accessible from the **History** but
 - Elapsed search time
 - Date range (if filtered)
 - MR badge (if MR toggles were active)
+- AI badge (if AI Images Only was active)
 
 History persists across sessions.
 

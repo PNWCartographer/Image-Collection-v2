@@ -25,8 +25,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: rgba(255, 59, 48, 0.12);
-  border: 1px solid rgba(255, 59, 48, 0.25);
+  background: var(--status-red-bg);
+  border: 1px solid var(--status-red-border);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   color: var(--status-red);
@@ -48,5 +48,5 @@
 }
 
 .errorDismiss:hover {
-  background: rgba(255, 59, 48, 0.15);
+  background: var(--status-red-bg);
 }

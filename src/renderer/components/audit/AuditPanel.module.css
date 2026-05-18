@@ -149,17 +149,17 @@
 }
 
 .hintBadgeGood {
-  background: rgba(52, 199, 89, 0.15);
+  background: var(--status-green-bg);
   color: var(--status-green);
 }
 
 .hintBadgeWarn {
-  background: rgba(255, 149, 0, 0.15);
+  background: var(--status-orange-bg);
   color: var(--status-orange);
 }
 
 .hintBadgeError {
-  background: rgba(255, 59, 48, 0.15);
+  background: var(--status-red-bg);
   color: var(--status-red);
 }
 

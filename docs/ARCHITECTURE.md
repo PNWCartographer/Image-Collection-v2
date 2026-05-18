@@ -508,9 +508,16 @@ interface SearchContext {
 
 ### CSS Architecture
 ```
-globals.css        — Design tokens: --blur-glass, --blur-subtle, --focus-ring, etc.
+globals.css        — Design tokens (shared across themes):
+                       Layout:  --radius-*, --blur-glass, --blur-subtle, --blur-overlay
+                       Accent:  --accent-primary, --accent-shadow, --focus-ring
+                       Status:  --status-green/orange/red, --status-*-bg, --status-red-border
+                       Type:    --font-*, --transition-*
+                     Theme-scoped tokens defined inside [data-theme="dark"|"light"]:
+                       --bg-*, --text-*, --border-*, --shadow-*
 controls.module.css — Shared .input / .browseBtn styles (CSS Modules composes)
-*.module.css       — Panel-level styles compose from controls.module.css
+*.module.css       — Panel-level styles compose from controls.module.css;
+                     all colors reference tokens — no hardcoded hex/rgba
 ```
 
 ### Error Feedback

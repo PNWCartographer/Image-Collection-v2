@@ -130,6 +130,9 @@ export default function ActionButtons({
                       {(entry.mrPass || entry.mrFail) && (
                         <span className={styles.historyMR}> MR</span>
                       )}
+                      {entry.aiImages && (
+                        <span className={styles.historyMR}> AI</span>
+                      )}
                     </span>
                   </div>
                   <div className={styles.historyItemFooter}>
