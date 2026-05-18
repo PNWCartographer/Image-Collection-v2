@@ -120,12 +120,12 @@ Controls how exported folders are arranged at the destination:
 | **Date > Machine** | Two-level: date then machine | `dest/20260515/M8/350002267153742_192/` |
 | **By IMEI** | Groups all instances of the same device | `dest/350002267153742/M8_20260515_192/` |
 
-For **MR image exports**, the same modes apply but the leaf is a `.png` file instead of a folder:
+For **MR image exports**, each IMEI gets its own folder containing the matched `.png` file(s):
 
 | Mode | MR Example |
 |---|---|
-| Flat | `dest/350002267153742_M8_20260515_Samsung-Galaxy_S24.png` |
-| Machine > Date | `dest/M8/20260515/350002267153742_Samsung-Galaxy_S24.png` |
+| Flat | `dest/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
+| Machine > Date | `dest/M8/20260515/350002267153742/Samsung-Galaxy_S24.png` |
 | By IMEI | `dest/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
 
 ### Duplicates

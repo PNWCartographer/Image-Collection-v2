@@ -51,25 +51,30 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
 
 /**
  * Build destination path for MR (Model Recognition) exports.
- * MR matches are single .png files, so the path includes the filename.
+ * MR matches are single .png files, grouped into an IMEI folder.
+ *
+ * flat:          dest/IMEI/Machine_YYYYMMDD_BrandModel.png
+ * by-machine:    dest/Machine/IMEI/YYYYMMDD_BrandModel.png
+ * by-date:       dest/YYYYMMDD/IMEI/Machine_BrandModel.png
+ * machine-date:  dest/Machine/YYYYMMDD/IMEI/BrandModel.png
+ * date-machine:  dest/YYYYMMDD/Machine/IMEI/BrandModel.png
+ * by-imei:       dest/IMEI/Machine_YYYYMMDD_BrandModel.png
  */
 function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
   const mrTag = match.mrFolder || (match.matchType === 'mr-pass' ? 'MR-Pass' : 'MR-Fail')
-  const fileName = `${match.imei}_${mrTag}.png`
 
   switch (organize) {
     case 'flat':
-      return join(dest, `${match.imei}_${match.machineName}_${match.date}_${mrTag}.png`)
-    case 'by-machine':
-      return join(dest, match.machineName, `${match.imei}_${match.date}_${mrTag}.png`)
-    case 'by-date':
-      return join(dest, match.date, `${match.imei}_${match.machineName}_${mrTag}.png`)
-    case 'machine-date':
-      return join(dest, match.machineName, match.date, fileName)
-    case 'date-machine':
-      return join(dest, match.date, match.machineName, fileName)
     case 'by-imei':
       return join(dest, match.imei, `${match.machineName}_${match.date}_${mrTag}.png`)
+    case 'by-machine':
+      return join(dest, match.machineName, match.imei, `${match.date}_${mrTag}.png`)
+    case 'by-date':
+      return join(dest, match.date, match.imei, `${match.machineName}_${mrTag}.png`)
+    case 'machine-date':
+      return join(dest, match.machineName, match.date, match.imei, `${mrTag}.png`)
+    case 'date-machine':
+      return join(dest, match.date, match.machineName, match.imei, `${mrTag}.png`)
   }
 }
 
