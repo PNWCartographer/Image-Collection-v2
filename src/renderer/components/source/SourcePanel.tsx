@@ -6,9 +6,9 @@ import { generateId } from '../../../shared/utils'
 import { t, type Lang } from '../../../shared/i18n'
 import styles from './SourcePanel.module.css'
 
-function inferSourceName(path: string): string {
+function inferSourceName(path: string, lang: Lang): string {
   const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/)
-  return parts[parts.length - 1] || 'Default'
+  return parts[parts.length - 1] || t(lang, 'Default', '預設', '默认')
 }
 
 const FOLDER_TW: Record<string, string> = {
@@ -119,7 +119,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
           const savedToggles = (await window.electronAPI.settingsGet(`toggles:${lastPath}`)) as Record<string, boolean> | null
           const newSource: SourceConfig = {
             id: generateId(),
-            name: inferSourceName(lastPath),
+            name: inferSourceName(lastPath, 'en'), // Mount-time: lang not loaded yet
             rootPath: lastPath,
             folderToggles: savedToggles || {}
           }
@@ -278,7 +278,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
     } else {
       const newSource: SourceConfig = {
         id: generateId(),
-        name: inferSourceName(path),
+        name: inferSourceName(path, lang),
         rootPath: path,
         folderToggles: {}
       }

@@ -219,12 +219,22 @@ export async function exportResults(
   logsDir: string,
   onProgress: (progress: ExportProgress) => void
 ): Promise<ExportResult> {
+  // Cancel any in-flight export before starting a new one
+  activeToken.cancelled = true
   const token = { cancelled: false }
   activeToken = token
   const startTime = Date.now()
   const logger = await createExportLogger(logsDir)
 
   const { matches, destination, action, imageType, organize, duplicates, aiImages } = request
+
+  // Validate destination is accessible and writable before starting work
+  try {
+    await mkdir(destination, { recursive: true })
+  } catch (err) {
+    await logger.close()
+    throw new Error(`Destination not accessible: ${errorMessage(err)}`)
+  }
   const totalItems = matches.length
 
   // ── Log header ──

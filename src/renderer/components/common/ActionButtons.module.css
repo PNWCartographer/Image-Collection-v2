@@ -45,7 +45,7 @@
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(var(--blur-subtle));
   transition: all var(--transition-fast);
 }
 

@@ -85,6 +85,8 @@ export interface SearchResult {
   matches: SearchMatch[]
   missingIMEIs: string[]
   totalSearched: number
+  /** Number of folders that failed to read (network errors, permission issues). */
+  scanErrors: number
   elapsedMs: number
 }
 

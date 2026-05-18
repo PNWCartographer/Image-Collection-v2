@@ -13,6 +13,8 @@
   --radius-xl: 24px;
 
   --blur-glass: 20px;
+  --blur-subtle: 10px;
+  --focus-ring: rgba(10, 186, 181, 0.15);
 
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;

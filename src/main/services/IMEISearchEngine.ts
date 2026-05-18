@@ -26,9 +26,12 @@ interface SearchContext {
   imeiSet: Set<string>
   matches: SearchMatch[]
   foundIMEIs: Set<string>
+  scanErrors: number
 }
 
 function createSearchContext(imeis: string[]): SearchContext {
+  // Cancel any in-flight search before starting a new one
+  activeToken.cancelled = true
   const token = { cancelled: false }
   activeToken = token
   return {
@@ -36,7 +39,8 @@ function createSearchContext(imeis: string[]): SearchContext {
     startTime: Date.now(),
     imeiSet: new Set(imeis),
     matches: [],
-    foundIMEIs: new Set<string>()
+    foundIMEIs: new Set<string>(),
+    scanErrors: 0
   }
 }
 
@@ -221,6 +225,7 @@ async function searchTargeted(
       }
     } catch {
       // Date folder not accessible — these IMEIs need fallback
+      ctx.scanErrors++
       for (const imei of imeisInFolder) {
         if (!foundIMEIs.has(imei)) fallbackImeis.push(imei)
       }
@@ -279,6 +284,7 @@ async function searchBroad(
       }
     } catch {
       // Machine folder not accessible
+      ctx.scanErrors++
     }
   })
 
@@ -298,6 +304,7 @@ async function searchBroad(
       }
     } catch {
       // Date folder not accessible
+      ctx.scanErrors++
     }
 
     foldersScanned.value++
@@ -328,7 +335,7 @@ export async function searchIMEIs(
     )
 
     if (token.cancelled) {
-      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, token, onProgress)
+      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, ctx.scanErrors, token, onProgress)
     }
 
     let totalScanned = directSearched
@@ -351,7 +358,7 @@ export async function searchIMEIs(
     }
 
     if (token.cancelled || fallbackImeis.length === 0) {
-      return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned, token, onProgress)
+      return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned, ctx.scanErrors, token, onProgress)
     }
 
     // Full broad scan for remaining IMEIs without any usable hints
@@ -366,12 +373,12 @@ export async function searchIMEIs(
     }
 
     const broadScanned = await searchBroad(fallbackRequest, ctx, onProgress, onMatches, 90)
-    return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned + broadScanned, token, onProgress)
+    return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned + broadScanned, ctx.scanErrors, token, onProgress)
   }
 
   // Standard broad scan (no hints available)
   const scanned = await searchBroad(request, ctx, onProgress, onMatches)
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, scanned, token, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, scanned, ctx.scanErrors, token, onProgress)
 }
 
 function buildResult(
@@ -380,6 +387,7 @@ function buildResult(
   foundIMEIs: Set<string>,
   startTime: number,
   foldersScanned: number,
+  scanErrors: number,
   token: CancelToken,
   onProgress: (progress: SearchProgress) => void
 ): SearchResult {
@@ -400,6 +408,7 @@ function buildResult(
     matches,
     missingIMEIs,
     totalSearched: foldersScanned,
+    scanErrors,
     elapsedMs
   }
 }
@@ -511,7 +520,7 @@ async function searchMRImages(
     })
   }
 
-  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, token, onProgress)
+  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, ctx.scanErrors, token, onProgress)
 
   const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
 
@@ -569,16 +578,18 @@ async function searchMRImages(
           if (batch.length > 0) onMatches(batch)
         } catch {
           // Subfolder not accessible
+          ctx.scanErrors++
         }
       }
     } catch {
       // Date folder not accessible
+      ctx.scanErrors++
     }
 
     foldersScanned.value++
   })
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, token, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, ctx.scanErrors, token, onProgress)
 }
 
 async function countFiles(folderPath: string): Promise<{ bmp: number; jpeg: number; other: number }> {

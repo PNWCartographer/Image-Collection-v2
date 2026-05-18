@@ -45,7 +45,7 @@
 
 .orgTrigger {
   background: var(--bg-glass);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(var(--blur-subtle));
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-md);
   padding: 8px 12px;
@@ -152,43 +152,11 @@
 }
 
 .input {
-  flex: 1;
-  background: var(--bg-input);
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  color: var(--text-primary);
-  font-family: var(--font-family);
-  font-size: var(--font-size-sm);
-  transition: border-color var(--transition-fast);
-}
-
-.input:focus {
-  border-color: var(--border-glass-focus);
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(10, 186, 181, 0.15);
-}
-
-.input::placeholder {
-  color: var(--text-tertiary);
+  composes: input from '../../styles/controls.module.css';
 }
 
 .browseBtn {
-  background: var(--bg-glass);
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-md);
-  padding: 8px 16px;
-  color: var(--text-primary);
-  font-family: var(--font-family);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--transition-fast);
-}
-
-.browseBtn:hover {
-  background: var(--bg-glass-hover);
+  composes: browseBtn from '../../styles/controls.module.css';
 }
 
 .modalOverlay {

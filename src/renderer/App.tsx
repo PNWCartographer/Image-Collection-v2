@@ -55,11 +55,15 @@ function buildStatusMessage(s: StatusInputs): string {
   if (s.searching) return s.lang === 'en' ? 'Preparing search...' : s.lang === 'zh-TW' ? '正在準備搜尋...' : '正在准备搜索...'
   if (s.searchResult) {
     const unique = new Set(s.searchResult.matches.map((m) => m.imei)).size
+    const errs = s.searchResult.scanErrors
+    const errTag = errs > 0
+      ? (s.lang === 'en' ? ` · ${errs} access errors` : s.lang === 'zh-TW' ? ` · ${errs} 個存取錯誤` : ` · ${errs} 个访问错误`)
+      : ''
     return s.lang === 'en'
-      ? `Search complete · ${unique.toLocaleString()} IMEIs found · ${s.searchResult.matches.length.toLocaleString()} matches · ${formatElapsed(s.searchResult.elapsedMs)}`
+      ? `Search complete · ${unique.toLocaleString()} IMEIs found · ${s.searchResult.matches.length.toLocaleString()} matches · ${formatElapsed(s.searchResult.elapsedMs)}${errTag}`
       : s.lang === 'zh-TW'
-        ? `搜尋完成 · 找到 ${unique.toLocaleString()} 個IMEI · ${s.searchResult.matches.length.toLocaleString()} 個匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
-        : `搜索完成 · 找到 ${unique.toLocaleString()} 个IMEI · ${s.searchResult.matches.length.toLocaleString()} 个匹配 · ${formatElapsed(s.searchResult.elapsedMs)}`
+        ? `搜尋完成 · 找到 ${unique.toLocaleString()} 個IMEI · ${s.searchResult.matches.length.toLocaleString()} 個匹配 · ${formatElapsed(s.searchResult.elapsedMs)}${errTag}`
+        : `搜索完成 · 找到 ${unique.toLocaleString()} 个IMEI · ${s.searchResult.matches.length.toLocaleString()} 个匹配 · ${formatElapsed(s.searchResult.elapsedMs)}${errTag}`
   }
   if (s.auditResult) {
     return s.lang === 'en'
@@ -114,7 +118,8 @@ function App(): JSX.Element {
   const [rootPath, setRootPath] = useState('')
   const [auditResult, setAuditResult] = useState<AuditParseResult | null>(null)
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
-  const [streamingMatches, setStreamingMatches] = useState<SearchMatch[]>([])
+  const streamingMatchesRef = useRef<SearchMatch[]>([])
+  const [streamingMatchCount, setStreamingMatchCount] = useState(0)
   const [searching, setSearching] = useState(false)
   const [progress, setProgress] = useState<SearchProgress | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -122,6 +127,7 @@ function App(): JSX.Element {
   const [exportResult, setExportResult] = useState<ExportResult | null>(null)
   const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>([])
   const [hasDestination, setHasDestination] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [smartSearch, setSmartSearch] = useState(true)
 
   const sourceNameRef = useRef('')
@@ -178,11 +184,12 @@ function App(): JSX.Element {
     return unsubscribe
   }, [])
 
-  // Subscribe to streaming match events
+  // Subscribe to streaming match events (ref-based to avoid quadratic array copies)
   useEffect(() => {
-    const unsubscribe = window.electronAPI.onSearchMatches((matches) => {
+    const unsubscribe = window.electronAPI.onSearchMatches((newMatches) => {
       if (abortedRef.current) return
-      setStreamingMatches((prev) => [...prev, ...matches])
+      for (const m of newMatches) streamingMatchesRef.current.push(m)
+      setStreamingMatchCount(streamingMatchesRef.current.length)
     })
     return unsubscribe
   }, [])
@@ -235,8 +242,10 @@ function App(): JSX.Element {
     abortedRef.current = false
     setSearching(true)
     setSearchResult(null)
-    setStreamingMatches([])
+    streamingMatchesRef.current = []
+    setStreamingMatchCount(0)
     setProgress(null)
+    setError(null)
 
     const dr = dateRangeRef.current
     const settings = settingsRef.current
@@ -260,7 +269,8 @@ function App(): JSX.Element {
       if (abortedRef.current || searchIdRef.current !== id) return
 
       setSearchResult(result)
-      setStreamingMatches([]) // Clear streaming state — final result replaces it
+      streamingMatchesRef.current = [] // Clear streaming state — final result replaces it
+      setStreamingMatchCount(0)
 
       // Save to search history (keep last 5)
       const entry: SearchHistoryEntry = {
@@ -287,6 +297,10 @@ function App(): JSX.Element {
       })
     } catch (err) {
       console.error('Search failed:', err)
+      if (searchIdRef.current === id) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(lang === 'en' ? `Search failed: ${msg}` : lang === 'zh-TW' ? `搜尋失敗: ${msg}` : `搜索失败: ${msg}`)
+      }
     } finally {
       // Only reset if this is still the active search
       if (searchIdRef.current === id) {
@@ -300,7 +314,8 @@ function App(): JSX.Element {
     window.electronAPI.cancelSearch()
     setSearching(false)
     setProgress(null)
-    setStreamingMatches([])
+    streamingMatchesRef.current = []
+    setStreamingMatchCount(0)
   }
 
   const handleExport = async (): Promise<void> => {
@@ -314,6 +329,7 @@ function App(): JSX.Element {
     setExporting(true)
     setExportResult(null)
     setExportProgress(null)
+    setError(null)
 
     try {
       const request: ExportRequest = {
@@ -333,6 +349,10 @@ function App(): JSX.Element {
       setExportResult(result)
     } catch (err) {
       console.error('Export failed:', err)
+      if (exportIdRef.current === id) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(lang === 'en' ? `Export failed: ${msg}` : lang === 'zh-TW' ? `匯出失敗: ${msg}` : `导出失败: ${msg}`)
+      }
     } finally {
       // Only reset if this is still the active export
       if (exportIdRef.current === id) {
@@ -357,22 +377,26 @@ function App(): JSX.Element {
     setExporting(false)
     setAuditResult(null)
     setSearchResult(null)
-    setStreamingMatches([])
+    streamingMatchesRef.current = []
+    setStreamingMatchCount(0)
     setProgress(null)
+    setError(null)
     setExportResult(null)
     setExportProgress(null)
   }
 
   const canSearch = selectedFolders.length > 0 && (auditResult?.validIMEIs.length ?? 0) > 0 && !searching && !exporting
 
-  // Use streaming matches while searching, final result after complete
+  // Use streaming matches while searching, final result after complete.
+  // streamingMatchCount drives re-renders; the ref holds the actual array (avoids quadratic copies).
   const displayResult: SearchResult | null = searchResult
     ? searchResult
-    : streamingMatches.length > 0
+    : streamingMatchCount > 0
       ? {
-          matches: streamingMatches,
+          matches: streamingMatchesRef.current,
           missingIMEIs: [],
           totalSearched: 0,
+          scanErrors: 0,
           elapsedMs: 0
         }
       : null
@@ -440,6 +464,12 @@ function App(): JSX.Element {
             sublabel={progressSublabel}
             visible={progressVisible}
           />
+          {error && (
+            <div className={styles.errorBanner}>
+              <span className={styles.errorText}>{error}</span>
+              <button className={styles.errorDismiss} onClick={() => setError(null)}>✕</button>
+            </div>
+          )}
           <ActionButtons
             onSearch={handleSearch}
             onExport={handleExport}

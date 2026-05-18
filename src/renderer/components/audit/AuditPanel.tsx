@@ -27,7 +27,7 @@ export default function AuditPanel({ lang, onAuditLoaded, smartSearch, onSmartSe
       setResult(parsed)
       onAuditLoaded(parsed)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to parse file'
+      const msg = err instanceof Error ? err.message : t(lang, 'Failed to parse file', '檔案解析失敗', '文件解析失败')
       setError(msg)
       setResult(null)
       onAuditLoaded(null)

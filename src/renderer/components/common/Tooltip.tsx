@@ -30,6 +30,11 @@ export default function Tooltip({ text }: TooltipProps): JSX.Element {
         className={styles.icon}
         onMouseEnter={show}
         onMouseLeave={() => setVisible(false)}
+        onFocus={show}
+        onBlur={() => setVisible(false)}
+        tabIndex={0}
+        role="note"
+        aria-label="Info"
       >
         ⓘ
       </span>

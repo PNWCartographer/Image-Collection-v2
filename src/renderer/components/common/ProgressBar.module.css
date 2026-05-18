@@ -18,9 +18,12 @@
 
 .fill {
   height: 100%;
+  width: 100%;
   background: var(--accent-primary);
   border-radius: 3px;
-  transition: width 300ms linear;
+  transform-origin: left;
+  transition: transform 300ms linear;
+  will-change: transform;
 }
 
 .fillIndeterminate {
@@ -29,12 +32,13 @@
   border-radius: 3px;
   width: 30%;
   animation: indeterminate 1.5s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes indeterminate {
-  0% { margin-left: 0%; opacity: 0.6; }
-  50% { margin-left: 70%; opacity: 1; }
-  100% { margin-left: 0%; opacity: 0.6; }
+  0% { transform: translateX(0); opacity: 0.6; }
+  50% { transform: translateX(233%); opacity: 1; }
+  100% { transform: translateX(0); opacity: 0.6; }
 }
 
 .info {
