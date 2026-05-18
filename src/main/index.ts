@@ -148,6 +148,8 @@ function registerIPC(): void {
 }
 
 app.whenReady().then(() => {
+  // Required for Windows taskbar integration (right-click menu, pinning, jump lists)
+  app.setAppUserModelId('com.imagecollection.v2')
   registerIPC()
   createWindow()
 })

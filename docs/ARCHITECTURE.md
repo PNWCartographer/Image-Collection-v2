@@ -326,7 +326,7 @@ App
 │   ├── MRPassToggle (MR PASS image switch)
 │   ├── MRFailToggle (MR FAIL image switch)
 │   ├── AIImagesToggle (AI detection images only switch)
-│   ├── ScanIndexFilter (All/First/Rescans dropdown)
+│   ├── ScanIndexFilter (All/First only dropdown)
 │   └── DestinationBrowser (path input + browse button)
 ├── ResultsPanel
 │   ├── ResultsSummary (found/missing counts)

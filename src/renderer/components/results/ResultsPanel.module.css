@@ -45,8 +45,16 @@
 
 .tableWrap {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 520px;   /* ~20 data rows + header */
   border-radius: var(--radius-md);
   border: 1px solid var(--border-glass);
+}
+
+.tableWrap .th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .table {

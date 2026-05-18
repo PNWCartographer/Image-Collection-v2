@@ -347,12 +347,12 @@ Every setting control has a tooltip icon (ⓘ) that displays on hover.
 |---------|-------------|
 | Action | **Move** transfers folders and removes them from the source. **Copy** duplicates folders, leaving the source unchanged. |
 | Image Type | **BMP**: collect .bmp images only. **JPEG**: collect .jpg/.jpeg only. **Both**: collect all image types from matched folders. |
-| Organize | Choose how exported folders are structured. **Flat**: single folder. **By Machine/Date**: one level of grouping. **Machine→Date** or **Date→Machine**: two-level nesting. **By IMEI**: groups all scans of the same device. **By Scan Index**: separates first scans from rescans. |
+| Organize | Choose how exported folders are structured. **Flat**: single folder. **By Machine/Date**: one level of grouping. **Machine→Date** or **Date→Machine**: two-level nesting. **By IMEI**: groups all scans of the same device. |
 | Duplicates | **Skip**: if an IMEI folder already exists at the destination, leave it untouched. **Overwrite**: replace existing destination folders with the new source data. |
 | MR PASS | Collects Model Recognition PASS images — devices the AI correctly identified. Searches `ModelRecogImages/{date}/{Brand-Model}/` folders for `.png` files matching audit list IMEIs. Disables standard image collection. |
 | MR FAIL | Collects Model Recognition FAIL images — devices the AI misidentified (wrong placement, wrong color, wrong model). Searches `ModelRecogImages/{date}/Error-Error/` for `.png` files matching audit list IMEIs. |
 | AI Images Only | When enabled, collects only the `FD/` subfolder contents (AI detection images) from matched IMEI folders. Standard scan images at the folder root are excluded. When disabled, standard export includes FD/ as part of the full IMEI folder. |
-| Scan Index | **All**: include every scan. **First scan only**: only _1 entries (first time scanned). **Rescans only**: only _2 and above (devices that were re-scanned). |
+| Scan Index | **All**: include every scan index (_1, _2, _3, etc.). **First only**: only _1 entries. |
 | Date Range | Restrict the search to date folders within the specified range. Leave blank to search all dates. |
 | Select All | Toggle all detected folders on or off for searching. |
 | Refresh | Re-scan the shared folder to detect any new or removed subfolders since last check. |

@@ -346,5 +346,4 @@
 
 ## Not Yet Testable (Future Milestones)
 
-- **AutoMode** — awaiting implementation spec from engineering team
-- **Rescan Image Collection** — awaiting implementation spec from engineering team
+- Additional coworker-requested features — to be incorporated after initial analysis

@@ -34,7 +34,7 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 | **Multi-source manager** | Save and switch between multiple NAS roots; each source remembers its own folder toggles |
 | **Search history** | Last 5 searches stored with full parameter and result summaries |
 | **Date range filter** | Restrict searches to a specific date window (YYYYMMDD folder names) |
-| **Scan index filter** | Search all scans or first scan only (`_1` entries) |
+| **Scan index filter** | Filter by scan index number (`_1`, `_2`, `_3`, etc.) |
 | **Export logging** | Detailed per-file logs with file sizes and throughput; keeps 3 most recent logs |
 | **Missing IMEI report** | View and save the list of audit IMEIs not found on the NAS |
 | **Dark / Light theme** | Liquid Glass theming in both variants; persists across sessions |
@@ -210,7 +210,7 @@ For **MR image exports**, each IMEI gets its own folder containing the matched `
 | Value | Behavior |
 |---|---|
 | **All** (default) | Include every scan index (`_1`, `_2`, `_3`, etc.). |
-| **First scan only** | Only `_1` entries (the first time that device was scanned on that machine/date). |
+| **First only** | Only `_1` entries — the first scan in the series for that device on that machine/date. |
 
 ### MR PASS
 
@@ -344,7 +344,7 @@ NAS_ROOT/                              (e.g. Z:\)
 
 **Naming conventions:**
 - IMEI: always 15 numeric digits.
-- Scan index: integer after the underscore (`_1` = first scan, `_2` = rescan, etc.).
+- Scan index: integer after the underscore (`_1`, `_2`, `_3`, etc.) — sequential number in the series of scans for that device.
 - Date folders: always 8 digits in `YYYYMMDD` format.
 - MR image filenames: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png` (IMEI is the 4th hyphen-delimited segment).
 
@@ -414,7 +414,6 @@ Use **Add/Remove Programs** (Settings > Apps > Installed apps). The uninstaller 
 
 ## Known Limitations
 
-- **AutoMode** and **Rescan Image Collection** tabs are deferred pending implementation specs from the engineering team.
 - The placeholder app icon (`resources/icon.ico`) is a generated teal square. Replace with a production icon before final distribution.
 - Date range filtering operates on folder date names (`YYYYMMDD`). Intra-day time filtering is not supported — the NAS folder structure does not encode time.
 - Export summary report with color-coded CSV/Excel output is planned but not yet implemented.

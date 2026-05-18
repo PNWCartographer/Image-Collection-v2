@@ -210,13 +210,15 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
     scanFolder(source.rootPath, source.folderToggles)
   }
 
-  // ── Add new source ──
-  const handleSaveNewSource = (): void => {
-    const name = newSourceName.trim()
-    if (!name || !folderPath) return
+  // ── Add new source: browse for folder first, then name it ──
+  const [pendingAddPath, setPendingAddPath] = useState('')
 
-    // Prevent duplicate paths
-    const normalizedPath = folderPath.replace(/[\\/]+$/, '').toLowerCase()
+  const handleAddSource = async (): Promise<void> => {
+    const path = await window.electronAPI.openFolderDialog()
+    if (!path) return
+
+    // Check for duplicate paths
+    const normalizedPath = path.replace(/[\\/]+$/, '').toLowerCase()
     const duplicate = sources.find((s) => s.rootPath.replace(/[\\/]+$/, '').toLowerCase() === normalizedPath)
     if (duplicate) {
       const msg = lang === 'en'
@@ -227,19 +229,31 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
       if (!window.confirm(msg)) return
     }
 
+    setPendingAddPath(path)
+    setNewSourceName(inferSourceName(path, lang))
+    setAddingSource(true)
+  }
+
+  const handleSaveNewSource = (): void => {
+    const name = newSourceName.trim()
+    if (!name || !pendingAddPath) return
+
     const newSource: SourceConfig = {
       id: generateId(),
       name,
-      rootPath: folderPath,
-      folderToggles: { ...toggles }
+      rootPath: pendingAddPath,
+      folderToggles: {}
     }
     const updated = [...sources, newSource]
     setSources(updated)
     setActiveSourceId(newSource.id)
+    setFolderPath(pendingAddPath)
     setAddingSource(false)
     setNewSourceName('')
+    setPendingAddPath('')
     window.electronAPI.settingsSet('sources', updated)
     window.electronAPI.settingsSet('activeSourceId', newSource.id)
+    scanFolder(pendingAddPath)
   }
 
   // ── Delete active source ──
@@ -356,7 +370,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
               onChange={(e) => setNewSourceName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSaveNewSource()
-                if (e.key === 'Escape') { setAddingSource(false); setNewSourceName('') }
+                if (e.key === 'Escape') { setAddingSource(false); setNewSourceName(''); setPendingAddPath('') }
               }}
               placeholder={t(lang, 'Source name...', '資料來源名稱...', '数据源名称...')}
             />
@@ -370,7 +384,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
             </button>
             <button
               className={styles.sourceBtn}
-              onClick={() => { setAddingSource(false); setNewSourceName('') }}
+              onClick={() => { setAddingSource(false); setNewSourceName(''); setPendingAddPath('') }}
               title={t(lang, 'Cancel', '取消', '取消')}
             >
               ✕
@@ -392,9 +406,8 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
             </select>
             <button
               className={styles.sourceBtn}
-              onClick={() => setAddingSource(true)}
-              disabled={!folderPath}
-              title={t(lang, 'Save current path as new source', '將目前路徑儲存為新資料來源', '将当前路径保存为新数据源')}
+              onClick={handleAddSource}
+              title={t(lang, 'Add a new source folder', '新增資料來源資料夾', '添加新数据源文件夹')}
             >
               +
             </button>

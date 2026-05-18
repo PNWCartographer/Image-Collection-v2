@@ -83,7 +83,7 @@ The tool accepts audit files containing 15-digit IMEI device numbers.
 | Filter | Options | Description |
 |--------|---------|-------------|
 | Date Range | Start date+time / End date+time (optional) | Only search date folders within the specified range; optional time component filters by image timestamps within folders |
-| Scan Index | All, First scan only (_1) | Filter by device scan sequence number. Note: "Rescans only" (_2+) is deferred pending implementation specification |
+| Scan Index | All, First only (_1) | Filter by scan index number — sequential position in the series of scans for a device |
 
 ### 2.4 Results Preview
 
@@ -154,7 +154,7 @@ MR images are collected from a **separate directory tree** (`ModelRecogImages/`)
 | Machine → Date | `dest/M8/20260515/IMEI_index/` | 2-level: machine then date |
 | Date → Machine | `dest/20260515/M8/IMEI_index/` | 2-level: date then machine |
 | By IMEI | `dest/350002267153742/M8_20260515_192/` | Group all instances of same device |
-| By Scan Index | `dest/scan_1/IMEI_index/`, `dest/scan_2/IMEI_index/` | Separate first scans from rescans |
+| By Scan Index | `dest/scan_1/IMEI_index/`, `dest/scan_2/IMEI_index/` | Group by scan index number |
 
 **Progress:**
 - Progress bar with percentage and current operation
@@ -247,8 +247,6 @@ All settings persist between sessions via electron-store:
 
 The following features exist in v1 but require additional specification before implementation in v2:
 
-- **AutoMode**: Functionality TBD — awaiting v1 documentation from engineering team
-- **Rescan Image Collection**: Tab/feature from v1 — awaiting v1 documentation
 - **Coworker-requested features**: Additional feature requests to be incorporated after initial analysis
 
 ---

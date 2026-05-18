@@ -90,7 +90,7 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 | 4.5 | Audit list matching | Set-based O(1) lookup for each extracted IMEI |
 | 4.6 | Parallel machine scanning | Promise.allSettled across selected machine folders |
 | 4.7 | Date range filter | Optional start/end dates; skip date folders outside range |
-| 4.8 | Scan index filter | All / First only (_1) / Rescans only (_2+) |
+| 4.8 | Scan index filter | All / First only (_1) |
 | 4.9 | File count & size stats | Stat each matched IMEI folder: count files by type, total size |
 | 4.10 | Missing IMEI detection | Diff audit list against found IMEIs → list missing entries |
 | 4.11 | Incomplete detection | Calculate median file count; flag <50% as incomplete |
@@ -251,11 +251,7 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 
 | # | Task | Details |
 |---|------|---------|
-| 11.1 | AutoMode | Functionality TBD — awaiting v1 engineering documentation |
-| 11.2 | Rescan Image Collection | Tab/feature from v1 — awaiting v1 documentation |
-| 11.3 | Coworker feature requests | To be incorporated after initial analysis period |
-
-**BLOCKED**: Awaiting v1 tool documentation from engineering team.
+| 11.1 | Coworker feature requests | To be incorporated after initial analysis period |
 
 ---
 

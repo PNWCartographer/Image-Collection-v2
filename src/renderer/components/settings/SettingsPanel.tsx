@@ -25,9 +25,9 @@ const TOOLTIPS: Record<string, Record<Lang, string>> = {
     'zh-CN': '跳过：如果目标位置已存在该 IMEI 文件夹，则保持不变。覆盖：用新的源数据替换目标位置中已有的文件夹。'
   },
   scanIndex: {
-    en: 'All: include every scan. First scan only: only _1 entries (first time scanned that day).',
-    'zh-TW': '全部：包含所有掃描記錄。僅首次掃描：僅 _1 條目（當天首次掃描）。',
-    'zh-CN': '全部：包含所有扫描记录。仅首次扫描：仅 _1 条目（当天首次扫描）。'
+    en: 'All: include every scan index (_1, _2, _3, etc.). First only: only _1 entries.',
+    'zh-TW': '全部：包含所有掃描索引（_1、_2、_3 等）。僅第一個：僅 _1 條目。',
+    'zh-CN': '全部：包含所有扫描索引（_1、_2、_3 等）。仅第一个：仅 _1 条目。'
   },
   mrPass: {
     en: 'Collects Model Recognition PASS images — devices the AI correctly identified. Searches ModelRecogImages/{date}/{Brand-Model}/ folders for .png files matching audit list IMEIs. Disables standard image collection.',
@@ -270,7 +270,7 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
             onChange={setScanIndex}
             options={[
               { value: 'all', label: t(lang, 'All', '全部', '全部') },
-              { value: 'first_only', label: t(lang, 'First scan only', '僅首次掃描', '仅首次扫描') }
+              { value: 'first_only', label: t(lang, 'First only', '僅第一個', '仅第一个') }
             ]}
           />
           <Tooltip text={TOOLTIPS.scanIndex[lang]} />
