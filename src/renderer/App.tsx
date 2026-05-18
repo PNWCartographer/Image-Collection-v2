@@ -108,6 +108,8 @@ function App(): JSX.Element {
 
   const sourceNameRef = useRef('')
   const abortedRef = useRef(false)
+  const searchIdRef = useRef(0)
+  const exportIdRef = useRef(0)
 
   const settingsRef = useRef<SettingsState>({
     action: 'copy', imageType: 'both', organize: 'flat',
@@ -207,6 +209,7 @@ function App(): JSX.Element {
   const handleSearch = async (): Promise<void> => {
     if (!auditResult || selectedFolders.length === 0) return
 
+    const id = ++searchIdRef.current
     abortedRef.current = false
     setSearching(true)
     setSearchResult(null)
@@ -228,8 +231,8 @@ function App(): JSX.Element {
         mrFail: settings.mrFail || undefined
       })
 
-      // Discard result if Clear was pressed while awaiting
-      if (abortedRef.current) return
+      // Discard result if cancelled or a newer operation started
+      if (abortedRef.current || searchIdRef.current !== id) return
 
       setSearchResult(result)
       setStreamingMatches([]) // Clear streaming state — final result replaces it
@@ -260,12 +263,19 @@ function App(): JSX.Element {
     } catch (err) {
       console.error('Search failed:', err)
     } finally {
-      setSearching(false)
+      // Only reset if this is still the active search
+      if (searchIdRef.current === id) {
+        setSearching(false)
+      }
     }
   }
 
   const handleCancel = (): void => {
+    abortedRef.current = true
     window.electronAPI.cancelSearch()
+    setSearching(false)
+    setProgress(null)
+    setStreamingMatches([])
   }
 
   const handleExport = async (): Promise<void> => {
@@ -274,6 +284,7 @@ function App(): JSX.Element {
     const settings = settingsRef.current
     if (!settings.destination) return
 
+    const id = ++exportIdRef.current
     abortedRef.current = false
     setExporting(true)
     setExportResult(null)
@@ -291,19 +302,25 @@ function App(): JSX.Element {
       }
       const result = await window.electronAPI.exportResults(request)
 
-      // Discard result if Clear was pressed while awaiting
-      if (abortedRef.current) return
+      // Discard result if cancelled or a newer operation started
+      if (abortedRef.current || exportIdRef.current !== id) return
 
       setExportResult(result)
     } catch (err) {
       console.error('Export failed:', err)
     } finally {
-      setExporting(false)
+      // Only reset if this is still the active export
+      if (exportIdRef.current === id) {
+        setExporting(false)
+      }
     }
   }
 
   const handleCancelExport = (): void => {
+    abortedRef.current = true
     window.electronAPI.cancelExport()
+    setExporting(false)
+    setExportProgress(null)
   }
 
   const handleClear = (): void => {
@@ -311,6 +328,8 @@ function App(): JSX.Element {
     abortedRef.current = true
     if (searching) window.electronAPI.cancelSearch()
     if (exporting) window.electronAPI.cancelExport()
+    setSearching(false)
+    setExporting(false)
     setAuditResult(null)
     setSearchResult(null)
     setStreamingMatches([])
