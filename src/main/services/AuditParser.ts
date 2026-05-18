@@ -49,9 +49,10 @@ function extractIMEIs(values: string[]): Pick<AuditParseResult, 'validIMEIs' | '
 // ── Machine name normalization ─────────────────────────────────────
 
 const MACHINE_PATTERNS: RegExp[] = [
-  /^M-?0*(\d+)$/i,          // M8, M08, M-8, M-08
-  /^Machine\s*(\d+)$/i,     // Machine 8, Machine08
-  /^0*(\d+)$/                // 08, 8 (bare number)
+  /^M-?0*(\d+)$/i,                  // M8, M08, M-8, M-08
+  /^[A-Za-z]{1,10}[-_\s]M-?0*(\d+)$/i,  // SG-M16, LAX-M08, SG_M16, SG M16 (site prefix)
+  /^Machine\s*(\d+)$/i,             // Machine 8, Machine08
+  /^0*(\d+)$/                       // 08, 8 (bare number)
 ]
 
 function normalizeMachine(raw: string): string | null {
@@ -74,19 +75,22 @@ function normalizeDate(raw: string, ambiguousOrder: DateOrder): string | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
 
+  // Strip time component if present (e.g., "5/14/26 11:57" → "5/14/26")
+  const dateOnly = trimmed.split(/[\sT]+/)[0]
+
   // YYYYMMDD (no separators)
-  if (/^\d{8}$/.test(trimmed)) {
-    const y = parseInt(trimmed.substring(0, 4), 10)
-    const m = parseInt(trimmed.substring(4, 6), 10)
-    const d = parseInt(trimmed.substring(6, 8), 10)
+  if (/^\d{8}$/.test(dateOnly)) {
+    const y = parseInt(dateOnly.substring(0, 4), 10)
+    const m = parseInt(dateOnly.substring(4, 6), 10)
+    const d = parseInt(dateOnly.substring(6, 8), 10)
     if (y >= 2000 && y <= 2099 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-      return trimmed
+      return dateOnly
     }
     return null
   }
 
   // YYYY-MM-DD or YYYY/MM/DD
-  const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)
+  const isoMatch = dateOnly.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)
   if (isoMatch) {
     const [, ys, ms, ds] = isoMatch
     const y = parseInt(ys, 10), m = parseInt(ms, 10), d = parseInt(ds, 10)
@@ -96,8 +100,8 @@ function normalizeDate(raw: string, ambiguousOrder: DateOrder): string | null {
     return null
   }
 
-  // Ambiguous: MM/DD/YYYY or DD/MM/YYYY (resolved by ambiguousOrder)
-  const ambigMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
+  // MM/DD/YYYY or DD/MM/YYYY (4-digit year, resolved by ambiguousOrder)
+  const ambigMatch = dateOnly.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
   if (ambigMatch) {
     const [, p1, p2, ys] = ambigMatch
     const y = parseInt(ys, 10)
@@ -115,6 +119,25 @@ function normalizeDate(raw: string, ambiguousOrder: DateOrder): string | null {
     return null
   }
 
+  // M/D/YY or MM/DD/YY or DD/MM/YY (2-digit year, resolved by ambiguousOrder)
+  const shortYearMatch = dateOnly.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$/)
+  if (shortYearMatch) {
+    const [, p1, p2, ys] = shortYearMatch
+    const y = 2000 + parseInt(ys, 10)
+    if (y < 2000 || y > 2099) return null
+
+    let m: number, d: number
+    if (ambiguousOrder === 'MDY') {
+      m = parseInt(p1, 10); d = parseInt(p2, 10)
+    } else {
+      d = parseInt(p1, 10); m = parseInt(p2, 10)
+    }
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      return `${y}${m.toString().padStart(2, '0')}${d.toString().padStart(2, '0')}`
+    }
+    return null
+  }
+
   return null
 }
 
@@ -128,7 +151,8 @@ function detectDateOrder(values: string[]): DateOrder {
   let mdyVotes = 0
   let dmyVotes = 0
   for (const raw of values) {
-    const match = raw.trim().match(/^(\d{1,2})[-/](\d{1,2})[-/]\d{4}$/)
+    const dateOnly = raw.trim().split(/[\sT]+/)[0]
+    const match = dateOnly.match(/^(\d{1,2})[-/](\d{1,2})[-/]\d{2,4}$/)
     if (!match) continue
     const first = parseInt(match[1], 10)
     const second = parseInt(match[2], 10)
@@ -141,14 +165,18 @@ function detectDateOrder(values: string[]): DateOrder {
 /** Human-readable label for the detected date format. */
 function describeDateFormat(values: string[], order: DateOrder): string | null {
   for (const raw of values) {
-    const trimmed = raw.trim()
-    if (/^\d{8}$/.test(trimmed)) return 'YYYYMMDD'
-    if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(trimmed)) {
-      return trimmed.includes('/') ? 'YYYY/MM/DD' : 'YYYY-MM-DD'
+    const dateOnly = raw.trim().split(/[\sT]+/)[0]
+    if (/^\d{8}$/.test(dateOnly)) return 'YYYYMMDD'
+    if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(dateOnly)) {
+      return dateOnly.includes('/') ? 'YYYY/MM/DD' : 'YYYY-MM-DD'
     }
-    if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(trimmed)) {
-      const sep = trimmed.includes('/') ? '/' : '-'
+    if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(dateOnly)) {
+      const sep = dateOnly.includes('/') ? '/' : '-'
       return order === 'MDY' ? `MM${sep}DD${sep}YYYY` : `DD${sep}MM${sep}YYYY`
+    }
+    if (/^\d{1,2}[-/]\d{1,2}[-/]\d{2}$/.test(dateOnly)) {
+      const sep = dateOnly.includes('/') ? '/' : '-'
+      return order === 'MDY' ? `M${sep}D${sep}YY` : `D${sep}M${sep}YY`
     }
   }
   return null

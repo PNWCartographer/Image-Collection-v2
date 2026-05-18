@@ -98,6 +98,7 @@ The column headers can be anything — the parser identifies columns by their da
 |---|---|
 | M8, M10 | M8, M10 (exact) |
 | M08, M-8, M-08 | M8 (strip leading zero / hyphen) |
+| SG-M16, LAX-M08 | M16, M8 (site prefix stripped) |
 | Machine 8 | M8 (extract number) |
 | 08, 8 | M8 (bare number) |
 
@@ -111,8 +112,10 @@ The column headers can be anything — the parser identifies columns by their da
 | MM/DD/YYYY | 05/15/2026 |
 | MM-DD-YYYY | 05-15-2026 |
 | M/D/YYYY | 5/15/2026 |
+| M/D/YY | 5/15/26 |
+| M/D/YY HH:MM | 5/14/26 11:57 (time stripped automatically) |
 
-For ambiguous date formats (MM/DD vs DD/MM), the parser samples all rows to determine which interpretation is correct. Defaults to MM/DD (US format) when fully ambiguous.
+Any trailing time component (e.g. `11:57`, `11:57:00`, or ISO `T` separator) is stripped before parsing. For ambiguous date formats (MM/DD vs DD/MM), the parser samples all rows to determine which interpretation is correct. Defaults to MM/DD (US format) when fully ambiguous.
 
 **After import**, the Audit panel shows detection quality with color-coded badges:
 - **Green**: all rows parsed successfully
