@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, screen, globalShortcut } from 'electron'
 import { join } from 'path'
-import { writeFile } from 'fs/promises'
+import { mkdir, writeFile } from 'fs/promises'
 import { execFile } from 'child_process'
 import { scanRootFolder } from './services/FolderScanner'
 import { parseAuditFile } from './services/AuditParser'
@@ -195,7 +195,8 @@ function registerIPC(): void {
     return true
   })
 
-  ipcMain.on('logs:open-folder', () => {
+  ipcMain.on('logs:open-folder', async () => {
+    await mkdir(logsDir, { recursive: true })
     shell.openPath(logsDir)
   })
 
