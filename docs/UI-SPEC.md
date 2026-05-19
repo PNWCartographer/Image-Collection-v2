@@ -317,6 +317,7 @@ Single-column scrollable layout with glass card panels stacked vertically with 1
 | Control-to-control gap (horizontal) | 16px |
 | Control-to-control gap (vertical) | 12px |
 | Checkbox grid gap | 8px vertical, 16px horizontal |
+| Checkbox grid max-height | 160px (scrollable when >20 folders) |
 | Section divider margin | 12px top/bottom |
 
 ---
@@ -396,7 +397,7 @@ Every setting control has a tooltip icon (ⓘ) that displays on hover.
 - Window resizes: panels stretch horizontally, checkbox grid reflows
 - Minimum width (720px): settings switch from 2-column to 1-column layout
 - Results table: horizontal scroll if columns overflow
-- Folder toggle grid: CSS Grid with `auto-fill, minmax(120px, 1fr)` for natural reflow
+- Folder toggle grid: CSS Grid with `auto-fill, minmax(120px, 1fr)` for natural reflow; scrolls vertically when folder count exceeds visible area
 
 ---
 

@@ -170,6 +170,8 @@
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 6px 16px;
   padding: 8px 0;
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .checkItem {
