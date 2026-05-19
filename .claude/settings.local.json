@@ -17,7 +17,11 @@
       "Bash(git status *)",
       "Bash(dir \"Image Collection v2 Setup 1.2.0.exe\")",
       "WebSearch",
-      "Bash(node -e \"console.log\\(require\\('./package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).version\\)\")",
+      "Bash(start /B npm start)",
+      "Bash(npm start *)",
+      "mcp__Claude_in_Chrome__computer",
+      "PowerShell(Start-Sleep -Seconds 4; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $primary = [System.Windows.Forms.Screen]::PrimaryScreen; $b = $primary.Bounds; $bmp = New-Object System.Drawing.Bitmap\\($b.Width, $b.Height\\); $g = [System.Drawing.Graphics]::FromImage\\($bmp\\); $g.CopyFromScreen\\($b.Location, [System.Drawing.Point]::Empty, $b.Size\\); $savePath = 'C:\\\\Users\\\\klars\\\\Documents\\\\GitHub\\\\Image-Collection-v2\\\\screenshot-gui.png'; $bmp.Save\\($savePath, [System.Drawing.Imaging.ImageFormat]::Png\\); $g.Dispose\\(\\); $bmp.Dispose\\(\\); Write-Output \"Saved to $savePath\")"
     ]
   }
 }
