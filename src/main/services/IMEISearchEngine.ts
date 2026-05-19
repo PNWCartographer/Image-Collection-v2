@@ -96,7 +96,8 @@ async function buildMatchBatch(
       bmpCount: fc.bmp,
       jpegCount: fc.jpeg,
       otherCount: fc.other,
-      totalFiles: fc.bmp + fc.jpeg + fc.other
+      totalFiles: fc.bmp + fc.jpeg + fc.other,
+      modelName: fc.modelName ?? undefined
     }
     ctx.matches.push(match)
     batch.push(match)
@@ -592,22 +593,37 @@ async function searchMRImages(
   return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, ctx.scanErrors, token, onProgress)
 }
 
-async function countFiles(folderPath: string): Promise<{ bmp: number; jpeg: number; other: number }> {
-  const counts = { bmp: 0, jpeg: 0, other: 0 }
+interface FileCountResult {
+  bmp: number
+  jpeg: number
+  other: number
+  /** Brand-Model extracted from SG-*.png filename, e.g. "Apple-iPhone13Pro" */
+  modelName: string | null
+}
+
+async function countFiles(folderPath: string): Promise<FileCountResult> {
+  const counts: FileCountResult = { bmp: 0, jpeg: 0, other: 0, modelName: null }
 
   try {
     const entries = await readdir(folderPath, { withFileTypes: true })
 
     for (const entry of entries) {
       if (!entry.isFile()) continue
-      const ext = entry.name.toLowerCase()
+      const name = entry.name
+      const lower = name.toLowerCase()
 
-      if (ext.endsWith('.bmp')) {
+      if (lower.endsWith('.bmp')) {
         counts.bmp++
-      } else if (ext.endsWith('.jpg') || ext.endsWith('.jpeg')) {
+      } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
         counts.jpeg++
       } else {
         counts.other++
+      }
+
+      // Detect MR image (SG-*.png) and extract Brand-Model
+      if (!counts.modelName && lower.startsWith('sg-') && lower.endsWith('.png')) {
+        const model = extractModelFromMRFilename(name)
+        if (model) counts.modelName = model
       }
     }
   } catch {
@@ -615,4 +631,19 @@ async function countFiles(folderPath: string): Promise<{ bmp: number; jpeg: numb
   }
 
   return counts
+}
+
+/**
+ * Extract Brand-Model from an MR image filename.
+ * Format: SG-{machine}-{code}-{IMEI}-{Brand}-{Model}.png
+ * Returns e.g. "Apple-iPhone13Pro" or null if unparseable.
+ */
+function extractModelFromMRFilename(fileName: string): string | null {
+  const segments = fileName.replace(/\.png$/i, '').split('-')
+  // SG, machine, code, IMEI, ...Brand-Model parts
+  if (segments.length < 6) return null
+  // Segment 3 must be 15-digit IMEI
+  if (!IMEI_REGEX.test(segments[3])) return null
+  // Everything after the IMEI is Brand-Model (rejoin in case of extra hyphens)
+  return segments.slice(4).join('-')
 }

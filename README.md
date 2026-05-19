@@ -28,7 +28,7 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 | **Smart Search** | Auto-detects Machine and Date columns in audit files for targeted folder lookups instead of full NAS scan; auto-selects machine folders and fills date range |
 | **Parallel NAS search** | 48 concurrent folder reads, tuned for RS3617RPxs (12-drive RAID 5, 1 Gbps) |
 | **Parallel export** | 8 folders x 4 files = 32 concurrent copies, saturates the 1 Gbps pipe |
-| **6 organization modes** | Flat, By Machine, By Date, Machine-Date, Date-Machine, By IMEI |
+| **7 organization modes** | Flat, By Machine, By Date, Machine-Date, Date-Machine, By IMEI, By Model |
 | **MR PASS / FAIL collection** | Collect Model Recognition images from `ModelRecogImages/` by toggle |
 | **AI Images Only** | Export only the `FD/` subfolder (AI detection images) from matched IMEI folders |
 | **Multi-source manager** | Save and switch between multiple NAS roots; each source remembers its own folder toggles |
@@ -189,6 +189,7 @@ Controls how exported folders are arranged at the destination:
 | **Machine > Date** | Two-level: machine then date | `dest/M8/20260515/350002267153742_192/` |
 | **Date > Machine** | Two-level: date then machine | `dest/20260515/M8/350002267153742_192/` |
 | **By IMEI** | Groups all instances of the same device | `dest/350002267153742/M8_20260515_192/` |
+| **By Model** | Groups by device model (parsed from MR image) | `dest/Apple-iPhone13Pro/350002267153742_192/` |
 
 For **MR image exports**, each IMEI gets its own folder containing the matched `.png` file(s):
 
@@ -197,6 +198,9 @@ For **MR image exports**, each IMEI gets its own folder containing the matched `
 | Flat | `dest/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
 | Machine > Date | `dest/M8/20260515/350002267153742/Samsung-Galaxy_S24.png` |
 | By IMEI | `dest/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
+| By Model | `dest/Samsung-Galaxy_S24/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
+
+> **Always included:** Every export automatically includes the `DefectLog.xml` and MR image (`SG-*.png`) from each IMEI folder, regardless of the Image Type filter setting. These files are critical for audit and model identification.
 
 > **Tip:** Organize mode is independent of the search — you can change it after a search completes and before exporting. The export will use whichever mode is selected at the time you click **Export Results**.
 

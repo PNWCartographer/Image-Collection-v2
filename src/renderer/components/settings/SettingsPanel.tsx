@@ -82,6 +82,11 @@ const ORGANIZE_OPTIONS: OrganizeOption[] = [
     value: 'by-imei',
     label: { en: 'By IMEI', 'zh-TW': '按 IMEI', 'zh-CN': '按 IMEI' },
     desc: { en: 'Groups all instances of the same device across machines/dates. Example: dest/350002267153742/M8_20260515_192/', 'zh-TW': '將同一裝置在不同機器/日期的所有記錄分組。範例：dest/350002267153742/M8_20260515_192/', 'zh-CN': '将同一设备在不同机器/日期的所有记录分组。示例：dest/350002267153742/M8_20260515_192/' }
+  },
+  {
+    value: 'by-model',
+    label: { en: 'By Model', 'zh-TW': '按型號', 'zh-CN': '按型号' },
+    desc: { en: 'Groups IMEI folders by device model (parsed from MR image filename). Example: dest/Apple-iPhone13Pro/IMEI_index/', 'zh-TW': '依裝置型號分組（從 MR 影像檔名解析）。範例：dest/Apple-iPhone13Pro/IMEI_index/', 'zh-CN': '按设备型号分组（从 MR 图像文件名解析）。示例：dest/Apple-iPhone13Pro/IMEI_index/' }
   }
 ]
 

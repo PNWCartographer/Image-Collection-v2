@@ -30,6 +30,7 @@ export function cancelExport(): void {
  * machine-date:  dest/Machine/YYYYMMDD/IMEI_index/
  * date-machine:  dest/YYYYMMDD/Machine/IMEI_index/
  * by-imei:       dest/IMEI/Machine_YYYYMMDD_index/
+ * by-model:      dest/Brand-Model/IMEI_index/
  */
 /** Extract a human-readable message from an unknown error. */
 function errorMessage(err: unknown): string {
@@ -50,6 +51,8 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
       return join(dest, match.date, match.machineName, match.folderName)
     case 'by-imei':
       return join(dest, match.imei, `${match.machineName}_${match.date}_${match.scanIndex}`)
+    case 'by-model':
+      return join(dest, match.modelName || 'Unknown', match.folderName)
     default: {
       const _exhaustive: never = organize
       return _exhaustive
@@ -67,6 +70,7 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
  * machine-date:  dest/Machine/YYYYMMDD/IMEI/BrandModel.png
  * date-machine:  dest/YYYYMMDD/Machine/IMEI/BrandModel.png
  * by-imei:       dest/IMEI/Machine_YYYYMMDD_BrandModel.png
+ * by-model:      dest/Brand-Model/IMEI/Machine_YYYYMMDD_BrandModel.png
  */
 function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
   const mrTag = match.mrFolder || (match.matchType === 'mr-pass' ? 'MR-Pass' : 'MR-Fail')
@@ -83,6 +87,8 @@ function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportR
       return join(dest, match.machineName, match.date, match.imei, `${mrTag}.png`)
     case 'date-machine':
       return join(dest, match.date, match.machineName, match.imei, `${mrTag}.png`)
+    case 'by-model':
+      return join(dest, match.modelName || 'Unknown', match.imei, `${match.machineName}_${match.date}_${mrTag}.png`)
     default: {
       const _exhaustive: never = organize
       return _exhaustive
@@ -90,7 +96,20 @@ function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportR
   }
 }
 
+/** Files that are always included in every export regardless of image type filter. */
+const ALWAYS_INCLUDE_FILES = new Set(['defectlog.xml'])
+
+function isAlwaysIncluded(fileName: string): boolean {
+  const lower = fileName.toLowerCase()
+  if (ALWAYS_INCLUDE_FILES.has(lower)) return true
+  // MR image (SG-*.png) is always included
+  if (lower.startsWith('sg-') && lower.endsWith('.png')) return true
+  return false
+}
+
 function matchesImageType(fileName: string, imageType: ExportRequest['imageType']): boolean {
+  // Critical files are always exported
+  if (isAlwaysIncluded(fileName)) return true
   if (imageType === 'both') return true
   const ext = extname(fileName).toLowerCase()
   if (imageType === 'bmp') return ext === '.bmp'

@@ -69,6 +69,8 @@ export interface SearchMatch {
   matchType?: 'mr-pass' | 'mr-fail'
   /** Brand-Model folder name (MR PASS) or 'Error-Error' (MR FAIL) */
   mrFolder?: string
+  /** Brand-Model extracted from SG-*.png filename (e.g. "Apple-iPhone13Pro"). */
+  modelName?: string
 }
 
 export interface SearchProgress {
@@ -95,7 +97,7 @@ export interface ExportRequest {
   destination: string
   action: 'copy' | 'move'
   imageType: 'both' | 'bmp' | 'jpeg'
-  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei'
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei' | 'by-model'
   duplicates: 'skip' | 'overwrite'
   aiImages: boolean
 }
