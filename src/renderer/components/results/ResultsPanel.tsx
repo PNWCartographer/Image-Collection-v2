@@ -20,10 +20,12 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
   const [sortAsc, setSortAsc] = useState(true)
   const [showMissing, setShowMissing] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [showAllMissing, setShowAllMissing] = useState(false)
 
   // Reset showAll when results change (new search)
   useEffect(() => {
     setShowAll(false)
+    setShowAllMissing(false)
   }, [result])
 
   const sortedMatches = useMemo(() => {
@@ -62,7 +64,7 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
     const median = fileCounts[Math.floor(fileCounts.length / 2)]
     if (median === 0) return 0
     const threshold = median * 0.5
-    return result.matches.filter((m) => m.totalFiles < threshold).length
+    return result.matches.filter((m) => m.totalFiles > 0 && m.totalFiles <= threshold).length
   }, [result])
 
   const uniqueFound = useMemo(() => {
@@ -92,15 +94,15 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
           }
         </span>
         <div className={styles.summaryDots}>
-          <span className={styles.dotGroup}>
+          <span className={styles.dotGroup} title={lang === 'en' ? 'Folders with expected file count' : lang === 'zh-TW' ? '檔案數量正常的資料夾' : '文件数量正常的文件夹'}>
             <span className={`${styles.dot} ${styles.dotGreen}`} />
             {completeCount.toLocaleString()} {t(lang, 'complete', '完整', '完成')}
           </span>
-          <span className={styles.dotGroup}>
+          <span className={styles.dotGroup} title={lang === 'en' ? 'Folders with fewer files than expected (below 50% of median)' : lang === 'zh-TW' ? '檔案數量少於預期的資料夾（低於中位數的50%）' : '文件数量少于预期的文件夹（低于中位数的50%）'}>
             <span className={`${styles.dot} ${styles.dotOrange}`} />
             {incompleteCount.toLocaleString()} {t(lang, 'incomplete', '不完整', '不完整')}
           </span>
-          <span className={styles.dotGroup}>
+          <span className={styles.dotGroup} title={lang === 'en' ? 'Serial numbers not found in any searched folder' : lang === 'zh-TW' ? '在任何搜尋資料夾中都找不到的序號' : '在任何搜索文件夹中都找不到的序号'}>
             <span className={`${styles.dot} ${styles.dotRed}`} />
             {(result?.missingIMEIs.length ?? 0).toLocaleString()} {t(lang, 'missing', '缺少', '缺失')}
           </span>
@@ -117,12 +119,25 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
               </tr>
             </thead>
             <tbody>
-              {result.missingIMEIs.map((imei, idx) => (
+              {(showAllMissing ? result.missingIMEIs : result.missingIMEIs.slice(0, DISPLAY_LIMIT)).map((imei, idx) => (
                 <tr key={imei} className={styles.tr}>
                   <td className={styles.td}>{idx + 1}</td>
                   <td className={`${styles.td} ${styles.tdMissing}`}>{imei}</td>
                 </tr>
               ))}
+              {!showAllMissing && result.missingIMEIs.length > DISPLAY_LIMIT && (
+                <tr>
+                  <td className={styles.showAllRow} colSpan={2}>
+                    <button className={styles.showAllBtn} onClick={() => setShowAllMissing(true)}>
+                      {lang === 'en'
+                        ? `Showing ${DISPLAY_LIMIT} of ${result.missingIMEIs.length.toLocaleString()} — click to show all`
+                        : lang === 'zh-TW'
+                          ? `顯示 ${DISPLAY_LIMIT} / ${result.missingIMEIs.length.toLocaleString()} — 點擊顯示全部`
+                          : `显示 ${DISPLAY_LIMIT} / ${result.missingIMEIs.length.toLocaleString()} — 点击显示全部`}
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -174,7 +189,7 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
                         <td className={styles.td}>
                           {match.totalFiles}
                           {!isMR && (
-                            <span className={styles.fileBreakdown}>
+                            <span className={styles.fileBreakdown} title={`${match.bmpCount} BMP, ${match.jpegCount} JPEG`}>
                               ({match.bmpCount}b {match.jpegCount}j)
                             </span>
                           )}
@@ -190,10 +205,10 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
                           onClick={() => setShowAll(true)}
                         >
                           {lang === 'en'
-                            ? `Showing ${DISPLAY_LIMIT} of ${sortedMatches.length.toLocaleString()} — click to show all`
+                            ? `Showing ${DISPLAY_LIMIT} of ${sortedMatches.length.toLocaleString()} — click to show all${sortedMatches.length > 5000 ? ' (may be slow)' : ''}`
                             : lang === 'zh-TW'
-                              ? `顯示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 點擊顯示全部`
-                              : `显示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 点击显示全部`}
+                              ? `顯示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 點擊顯示全部${sortedMatches.length > 5000 ? '（可能較慢）' : ''}`
+                              : `显示 ${DISPLAY_LIMIT} / ${sortedMatches.length.toLocaleString()} — 点击显示全部${sortedMatches.length > 5000 ? '（可能较慢）' : ''}`}
                         </button>
                       </td>
                     </tr>

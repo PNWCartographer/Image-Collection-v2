@@ -33,6 +33,7 @@ const api: ElectronAPI = {
   },
   saveFile: (defaultName, filters, content) => ipcRenderer.invoke('dialog:save-file', defaultName, filters, content),
   openLogsFolder: () => ipcRenderer.send('logs:open-folder'),
+  openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path),
   getFilePath: (file: File) => webUtils.getPathForFile(file),
   settingsGet: (key) => ipcRenderer.invoke('settings:get', key),
   settingsSet: (key, value) => ipcRenderer.invoke('settings:set', key, value),

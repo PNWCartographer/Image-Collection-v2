@@ -2,7 +2,7 @@ import { readdir } from 'fs/promises'
 import { join } from 'path'
 import type { FolderScanResult } from '../../shared/types'
 
-const ALWAYS_SKIP = new Set(['#recycle', '$recycle.bin'])
+const ALWAYS_SKIP = new Set(['#recycle', '$recycle.bin', '.', '..'])
 
 export async function scanRootFolder(rootPath: string): Promise<FolderScanResult> {
   const entries = await readdir(rootPath, { withFileTypes: true })

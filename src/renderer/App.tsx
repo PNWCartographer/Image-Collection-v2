@@ -11,6 +11,7 @@ import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
 import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest, SearchHistoryEntry } from '../shared/types'
 import { formatElapsed, generateId } from '../shared/utils'
+import { t } from '../shared/i18n'
 import type { Lang } from '../shared/i18n'
 import styles from './App.module.css'
 
@@ -39,11 +40,12 @@ function buildStatusMessage(s: StatusInputs): string {
   }
   if (s.exporting) return s.lang === 'en' ? 'Preparing export...' : s.lang === 'zh-TW' ? '正在準備匯出...' : '正在准备导出...'
   if (s.exportResult) {
+    const dest = s.exportResult.destinationPath
     return s.lang === 'en'
-      ? `Export complete · ${s.exportResult.exported} exported · ${s.exportResult.skipped} skipped · ${s.exportResult.failed} failed · ${formatElapsed(s.exportResult.elapsedMs)}`
+      ? `Export complete · ${s.exportResult.exported} exported · ${s.exportResult.skipped} skipped · ${s.exportResult.failed} failed · ${formatElapsed(s.exportResult.elapsedMs)} · ${dest}`
       : s.lang === 'zh-TW'
-        ? `匯出完成 · ${s.exportResult.exported} 已匯出 · ${s.exportResult.skipped} 已略過 · ${s.exportResult.failed} 失敗 · ${formatElapsed(s.exportResult.elapsedMs)}`
-        : `导出完成 · ${s.exportResult.exported} 已导出 · ${s.exportResult.skipped} 已跳过 · ${s.exportResult.failed} 失败 · ${formatElapsed(s.exportResult.elapsedMs)}`
+        ? `匯出完成 · ${s.exportResult.exported} 已匯出 · ${s.exportResult.skipped} 已略過 · ${s.exportResult.failed} 失敗 · ${formatElapsed(s.exportResult.elapsedMs)} · ${dest}`
+        : `导出完成 · ${s.exportResult.exported} 已导出 · ${s.exportResult.skipped} 已跳过 · ${s.exportResult.failed} 失败 · ${formatElapsed(s.exportResult.elapsedMs)} · ${dest}`
   }
   if (s.searching && s.progress) {
     return s.lang === 'en'
@@ -72,7 +74,11 @@ function buildStatusMessage(s: StatusInputs): string {
         ? `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} 個資料夾已選擇`
         : `${s.auditResult.validIMEIs.length.toLocaleString()} IMEIs · ${s.selectedFolders.length} 个文件夹已选择`
   }
-  return s.lang === 'en' ? 'Ready' : s.lang === 'zh-TW' ? '就緒' : '就绪'
+  return s.lang === 'en'
+    ? '1. Select source → 2. Load audit file → 3. Search → 4. Export'
+    : s.lang === 'zh-TW'
+      ? '1. 選擇來源 → 2. 載入稽核檔案 → 3. 搜尋 → 4. 匯出'
+      : '1. 选择来源 → 2. 加载审计文件 → 3. 搜索 → 4. 导出'
 }
 
 function buildProgressState(
@@ -109,6 +115,15 @@ function buildProgressState(
             : `${progress.foldersScanned}/${progress.totalFolders} 个文件夹 · ${progress.matchesSoFar} 个匹配`)
       : undefined
   }
+}
+
+function friendlyError(msg: string, lang: Lang): string {
+  if (msg.includes('ENOENT')) return lang === 'en' ? 'Path not found — check that the network drive is connected and the folder exists.' : lang === 'zh-TW' ? '找不到路徑 — 請確認網路磁碟已連線且資料夾存在。' : '找不到路径 — 请确认网络驱动器已连接且文件夹存在。'
+  if (msg.includes('EPERM') || msg.includes('EACCES')) return lang === 'en' ? 'Permission denied — you may not have access to this folder.' : lang === 'zh-TW' ? '權限不足 — 您可能無法存取此資料夾。' : '权限不足 — 您可能无法访问此文件夹。'
+  if (msg.includes('EBUSY')) return lang === 'en' ? 'File is in use by another program — try again in a moment.' : lang === 'zh-TW' ? '檔案正被其他程式使用 — 請稍後再試。' : '文件正被其他程序使用 — 请稍后再试。'
+  if (msg.includes('ENOSPC')) return lang === 'en' ? 'Destination disk is full — free up space and try again.' : lang === 'zh-TW' ? '目標磁碟已滿 — 請釋放空間後再試。' : '目标磁盘已满 — 请释放空间后再试。'
+  if (msg.includes('ETIMEDOUT') || msg.includes('ENETUNREACH')) return lang === 'en' ? 'Network connection timed out — check your network connection.' : lang === 'zh-TW' ? '網路連線逾時 — 請檢查您的網路連線。' : '网络连接超时 — 请检查您的网络连接。'
+  return msg
 }
 
 function App(): JSX.Element {
@@ -186,12 +201,22 @@ function App(): JSX.Element {
 
   // Subscribe to streaming match events (ref-based to avoid quadratic array copies)
   useEffect(() => {
+    let rafId: number | null = null
     const unsubscribe = window.electronAPI.onSearchMatches((newMatches) => {
       if (abortedRef.current) return
       for (const m of newMatches) streamingMatchesRef.current.push(m)
-      setStreamingMatchCount(streamingMatchesRef.current.length)
+      // Debounce re-renders to animation frame rate (~60fps max)
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          setStreamingMatchCount(streamingMatchesRef.current.length)
+          rafId = null
+        })
+      }
     })
-    return unsubscribe
+    return () => {
+      unsubscribe()
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
   }, [])
 
   // Subscribe to export progress events
@@ -224,6 +249,12 @@ function App(): JSX.Element {
 
   const handleAuditLoaded = (result: AuditParseResult | null): void => {
     setAuditResult(result)
+    setSearchResult(null)
+    setExportResult(null)
+    streamingMatchesRef.current = []
+    setStreamingMatchCount(0)
+    setProgress(null)
+    setError(null)
   }
 
   const handleSettingsChange = useCallback((settings: SettingsState): void => {
@@ -236,6 +267,7 @@ function App(): JSX.Element {
   }, [])
 
   const handleSearch = async (): Promise<void> => {
+    if (searching) return  // Guard against double-click before React re-renders
     if (!auditResult || selectedFolders.length === 0) return
 
     const id = ++searchIdRef.current
@@ -300,7 +332,8 @@ function App(): JSX.Element {
       console.error('Search failed:', err)
       if (searchIdRef.current === id) {
         const msg = err instanceof Error ? err.message : String(err)
-        setError(lang === 'en' ? `Search failed: ${msg}` : lang === 'zh-TW' ? `搜尋失敗: ${msg}` : `搜索失败: ${msg}`)
+        const friendly = friendlyError(msg, lang)
+        setError(lang === 'en' ? `Search failed: ${friendly}` : lang === 'zh-TW' ? `搜尋失敗: ${friendly}` : `搜索失败: ${friendly}`)
       }
     } finally {
       // Only reset if this is still the active search
@@ -352,7 +385,8 @@ function App(): JSX.Element {
       console.error('Export failed:', err)
       if (exportIdRef.current === id) {
         const msg = err instanceof Error ? err.message : String(err)
-        setError(lang === 'en' ? `Export failed: ${msg}` : lang === 'zh-TW' ? `匯出失敗: ${msg}` : `导出失败: ${msg}`)
+        const friendly = friendlyError(msg, lang)
+        setError(lang === 'en' ? `Export failed: ${friendly}` : lang === 'zh-TW' ? `匯出失敗: ${friendly}` : `导出失败: ${friendly}`)
       }
     } finally {
       // Only reset if this is still the active export
@@ -469,6 +503,13 @@ function App(): JSX.Element {
             <div className={styles.errorBanner}>
               <span className={styles.errorText}>{error}</span>
               <button className={styles.errorDismiss} onClick={() => setError(null)}>✕</button>
+            </div>
+          )}
+          {exportResult && (
+            <div className={styles.exportDone}>
+              <button className={styles.openFolderBtn} onClick={() => window.electronAPI.openPath(exportResult.destinationPath)}>
+                {t(lang, 'Open Folder', '開啟資料夾', '打开文件夹')}
+              </button>
             </div>
           )}
           <ActionButtons

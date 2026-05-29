@@ -13,6 +13,22 @@ const SKIP_FOLDERS = new Set([
 // NAS runs at ~50% IOPS capacity during production, plenty of headroom
 const CONCURRENCY = 48
 
+/** Timeout for NAS readdir calls — avoids hanging on SMB disconnect. */
+const READDIR_TIMEOUT_MS = 15_000
+
+/** Wraps readdir in a timeout to avoid hanging on NAS disconnect. */
+async function readdirWithTimeout(
+  dirPath: string,
+  options: { withFileTypes: true }
+): Promise<import('fs').Dirent[]> {
+  return Promise.race([
+    readdir(dirPath, options),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`readdir timed out after ${READDIR_TIMEOUT_MS}ms: ${dirPath}`)), READDIR_TIMEOUT_MS)
+    )
+  ])
+}
+
 /** Per-operation cancellation token — avoids race conditions between overlapping calls. */
 let activeToken: CancelToken = { cancelled: false }
 
@@ -27,6 +43,10 @@ interface SearchContext {
   matches: SearchMatch[]
   foundIMEIs: Set<string>
   scanErrors: number
+  /** Detailed per-folder error descriptions for scan failures. */
+  scanErrorDetails: string[]
+  /** Count of IMEIs skipped by scan-index filter (had only higher-index entries). */
+  scanIndexFiltered: number
 }
 
 function createSearchContext(imeis: string[]): SearchContext {
@@ -40,7 +60,9 @@ function createSearchContext(imeis: string[]): SearchContext {
     imeiSet: new Set(imeis),
     matches: [],
     foundIMEIs: new Set<string>(),
-    scanErrors: 0
+    scanErrors: 0,
+    scanErrorDetails: [],
+    scanIndexFiltered: 0
   }
 }
 
@@ -52,14 +74,19 @@ async function scanDateFolder(
   datePath: string,
   imeiSet: Set<string>,
   scanIndexFilter: SearchRequest['scanIndexFilter']
-): Promise<PendingMatch[]> {
-  const entries = await readdir(datePath, { withFileTypes: true })
+): Promise<{ pending: PendingMatch[]; filteredCount: number }> {
+  const entries = await readdirWithTimeout(datePath, { withFileTypes: true })
   const pending: PendingMatch[] = []
+  let filteredCount = 0
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
     const parsed = parseIMEIFolder(entry.name)
     if (!parsed) continue
-    if (scanIndexFilter === 'first_only' && parsed.scanIndex !== 1) continue
+    if (scanIndexFilter === 'first_only' && parsed.scanIndex !== 1) {
+      // Track IMEIs that exist only at higher scan indices (M11)
+      if (imeiSet.has(parsed.imei)) filteredCount++
+      continue
+    }
     if (imeiSet.has(parsed.imei)) {
       pending.push({
         imei: parsed.imei,
@@ -69,7 +96,7 @@ async function scanDateFolder(
       })
     }
   }
-  return pending
+  return { pending, filteredCount }
 }
 
 /** Shared logic: count files in pending matches and build SearchMatch objects. */
@@ -81,7 +108,8 @@ async function buildMatchBatch(
   onMatches: (matches: SearchMatch[]) => void
 ): Promise<void> {
   if (pending.length === 0) return
-  const fileCounts = await Promise.all(pending.map((m) => countFiles(m.folderPath)))
+  // H7: Bounded concurrency — caps NAS reads at 8 per worker instead of unbounded
+  const fileCounts = await pooled(pending, 8, ctx.token, async (m) => countFiles(m.folderPath))
   const batch: SearchMatch[] = []
   for (let i = 0; i < pending.length; i++) {
     const m = pending[i]
@@ -96,7 +124,8 @@ async function buildMatchBatch(
       bmpCount: fc.bmp,
       jpegCount: fc.jpeg,
       otherCount: fc.other,
-      totalFiles: fc.bmp + fc.jpeg + fc.other,
+      // M10: -1 signals unreadable folder (vs 0 for genuinely empty)
+      totalFiles: fc.error ? -1 : fc.bmp + fc.jpeg + fc.other,
       modelName: fc.modelName ?? undefined
     }
     ctx.matches.push(match)
@@ -220,13 +249,15 @@ async function searchTargeted(
 
     try {
       const localImeiSet = new Set(imeisInFolder)
-      const pending = await scanDateFolder(datePath, localImeiSet, request.scanIndexFilter)
+      const { pending, filteredCount } = await scanDateFolder(datePath, localImeiSet, request.scanIndexFilter)
+      ctx.scanIndexFiltered += filteredCount
       if (pending.length > 0 && !token.cancelled) {
         await buildMatchBatch(pending, machine, dateStr, ctx, onMatches)
       }
-    } catch {
+    } catch (err) {
       // Date folder not accessible — these IMEIs need fallback
       ctx.scanErrors++
+      ctx.scanErrorDetails.push(`${machine}/${dateStr}: ${errorMessage(err)}`)
       for (const imei of imeisInFolder) {
         if (!foundIMEIs.has(imei)) fallbackImeis.push(imei)
       }
@@ -269,7 +300,7 @@ async function searchBroad(
     const machinePath = join(request.rootPath, folderName)
 
     try {
-      const entries = await readdir(machinePath, { withFileTypes: true })
+      const entries = await readdirWithTimeout(machinePath, { withFileTypes: true })
 
       for (const entry of entries) {
         if (!entry.isDirectory()) continue
@@ -283,9 +314,10 @@ async function searchBroad(
           dateStr: entry.name
         })
       }
-    } catch {
+    } catch (err) {
       // Machine folder not accessible
       ctx.scanErrors++
+      ctx.scanErrorDetails.push(`${folderName}: ${errorMessage(err)}`)
     }
   })
 
@@ -299,13 +331,15 @@ async function searchBroad(
     sendProgress(machine, dateStr)
 
     try {
-      const pending = await scanDateFolder(datePath, imeiSet, request.scanIndexFilter)
+      const { pending, filteredCount } = await scanDateFolder(datePath, imeiSet, request.scanIndexFilter)
+      ctx.scanIndexFiltered += filteredCount
       if (pending.length > 0 && !token.cancelled) {
         await buildMatchBatch(pending, machine, dateStr, ctx, onMatches)
       }
-    } catch {
+    } catch (err) {
       // Date folder not accessible
       ctx.scanErrors++
+      ctx.scanErrorDetails.push(`${machine}/${dateStr}: ${errorMessage(err)}`)
     }
 
     foldersScanned.value++
@@ -336,7 +370,7 @@ export async function searchIMEIs(
     )
 
     if (token.cancelled) {
-      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, ctx.scanErrors, token, onProgress)
+      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
     }
 
     let totalScanned = directSearched
@@ -358,8 +392,16 @@ export async function searchIMEIs(
       totalScanned += scanned
     }
 
+    // M5: Machine-only hinted IMEIs not found on their hinted machine
+    // need a full broad scan fallback — otherwise they're silently "missing"
+    for (const [, imeisForMachine] of machineOnlyGroups) {
+      for (const imei of imeisForMachine) {
+        if (!foundIMEIs.has(imei)) fallbackImeis.push(imei)
+      }
+    }
+
     if (token.cancelled || fallbackImeis.length === 0) {
-      return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned, ctx.scanErrors, token, onProgress)
+      return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
     }
 
     // Full broad scan for remaining IMEIs without any usable hints
@@ -374,12 +416,12 @@ export async function searchIMEIs(
     }
 
     const broadScanned = await searchBroad(fallbackRequest, ctx, onProgress, onMatches, 90)
-    return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned + broadScanned, ctx.scanErrors, token, onProgress)
+    return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned + broadScanned, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
   }
 
   // Standard broad scan (no hints available)
   const scanned = await searchBroad(request, ctx, onProgress, onMatches)
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, scanned, ctx.scanErrors, token, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, scanned, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
 }
 
 function buildResult(
@@ -390,7 +432,9 @@ function buildResult(
   foldersScanned: number,
   scanErrors: number,
   token: CancelToken,
-  onProgress: (progress: SearchProgress) => void
+  onProgress: (progress: SearchProgress) => void,
+  scanErrorDetails: string[] = [],
+  scanIndexFiltered: number = 0
 ): SearchResult {
   const missingIMEIs = allImeis.filter((imei) => !foundIMEIs.has(imei))
   const elapsedMs = Date.now() - startTime
@@ -410,8 +454,11 @@ function buildResult(
     missingIMEIs,
     totalSearched: foldersScanned,
     scanErrors,
-    elapsedMs
-  }
+    elapsedMs,
+    // TODO: Add scanErrorDetails: string[] and scanIndexFiltered: number to SearchResult in types.ts
+    ...(scanErrorDetails.length > 0 ? { scanErrorDetails } : {}),
+    ...(scanIndexFiltered > 0 ? { scanIndexFiltered } : {})
+  } as SearchResult
 }
 
 function parseIMEIFolder(name: string): { imei: string; scanIndex: number } | null {
@@ -443,16 +490,14 @@ function isDateInRange(dateStr: string, request: SearchRequest): boolean {
 /**
  * Extract the 15-digit IMEI from an MR image filename.
  * Format: SG-{machine}-{code}-{IMEI}-{brand}-{model}.png
- * Returns the IMEI string or null if the filename doesn't match.
+ * L2: Scans all segments for a 15-digit match instead of assuming position 3,
+ * making extraction robust against format variations.
  */
 function extractMRImei(fileName: string): string | null {
   const segments = fileName.replace(/\.png$/i, '').split('-')
-  // Minimum segments: SG, machine, code, IMEI, brand, model = 6
-  // But model names like "iPhone13ProMax" are a single segment, and
-  // brand-model combos vary, so just ensure index 3 exists and is 15 digits
-  if (segments.length < 4) return null
-  const candidate = segments[3]
-  if (IMEI_REGEX.test(candidate)) return candidate
+  for (const seg of segments) {
+    if (IMEI_REGEX.test(seg)) return seg
+  }
   return null
 }
 
@@ -502,7 +547,7 @@ async function searchMRImages(
       const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
 
       try {
-        const entries = await readdir(mrPath, { withFileTypes: true })
+        const entries = await readdirWithTimeout(mrPath, { withFileTypes: true })
 
         for (const entry of entries) {
           if (!entry.isDirectory()) continue
@@ -516,12 +561,13 @@ async function searchMRImages(
           })
         }
       } catch {
-        // ModelRecogImages not found for this machine — skip
+        // H6: MR folder errors were silently swallowed — now counted
+        ctx.scanErrors++
       }
     })
   }
 
-  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, ctx.scanErrors, token, onProgress)
+  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
 
   const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
 
@@ -531,7 +577,7 @@ async function searchMRImages(
     sendProgress(machine, dateStr)
 
     try {
-      const subFolders = await readdir(datePath, { withFileTypes: true })
+      const subFolders = await readdirWithTimeout(datePath, { withFileTypes: true })
 
       for (const sub of subFolders) {
         if (token.cancelled) break
@@ -546,7 +592,7 @@ async function searchMRImages(
         const subPath = join(datePath, sub.name)
 
         try {
-          const files = await readdir(subPath, { withFileTypes: true })
+          const files = await readdirWithTimeout(subPath, { withFileTypes: true })
           const batch: SearchMatch[] = []
 
           for (const file of files) {
@@ -577,20 +623,22 @@ async function searchMRImages(
           }
 
           if (batch.length > 0) onMatches(batch)
-        } catch {
+        } catch (err) {
           // Subfolder not accessible
           ctx.scanErrors++
+          ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}/${sub.name}: ${errorMessage(err)}`)
         }
       }
-    } catch {
+    } catch (err) {
       // Date folder not accessible
       ctx.scanErrors++
+      ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}: ${errorMessage(err)}`)
     }
 
     foldersScanned.value++
   })
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, ctx.scanErrors, token, onProgress)
+  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
 }
 
 interface FileCountResult {
@@ -599,38 +647,56 @@ interface FileCountResult {
   other: number
   /** Brand-Model extracted from SG-*.png filename, e.g. "Apple-iPhone13Pro" */
   modelName: string | null
+  /** M10: true when the folder could not be read (distinguishes from empty). */
+  error?: boolean
 }
 
 async function countFiles(folderPath: string): Promise<FileCountResult> {
   const counts: FileCountResult = { bmp: 0, jpeg: 0, other: 0, modelName: null }
 
   try {
-    const entries = await readdir(folderPath, { withFileTypes: true })
-
-    for (const entry of entries) {
-      if (!entry.isFile()) continue
-      const name = entry.name
-      const lower = name.toLowerCase()
-
-      if (lower.endsWith('.bmp')) {
-        counts.bmp++
-      } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
-        counts.jpeg++
-      } else {
-        counts.other++
-      }
-
-      // Detect MR image (SG-*.png) and extract Brand-Model
-      if (!counts.modelName && lower.startsWith('sg-') && lower.endsWith('.png')) {
-        const model = extractModelFromMRFilename(name)
-        if (model) counts.modelName = model
-      }
-    }
+    await countFilesRecursive(folderPath, counts)
   } catch {
-    // Can't read folder contents
+    // M10: Signal unreadable folder so UI can distinguish from empty
+    counts.error = true
   }
 
   return counts
+}
+
+/** H5/M3: Recursively count files in subdirectories (especially FD/) so AI Images mode shows accurate counts. */
+async function countFilesRecursive(dirPath: string, counts: FileCountResult): Promise<void> {
+  const entries = await readdirWithTimeout(dirPath, { withFileTypes: true })
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      // Recurse into subdirectories (e.g. FD/)
+      try {
+        await countFilesRecursive(join(dirPath, entry.name), counts)
+      } catch {
+        // Subdirectory not readable — skip but continue counting other entries
+      }
+      continue
+    }
+
+    if (!entry.isFile()) continue
+    const name = entry.name
+    const lower = name.toLowerCase()
+
+    if (lower.endsWith('.bmp')) {
+      counts.bmp++
+    } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      counts.jpeg++
+    } else {
+      counts.other++
+    }
+
+    // Detect MR image (SG-*.png) and extract Brand-Model
+    if (!counts.modelName && lower.startsWith('sg-') && lower.endsWith('.png')) {
+      const model = extractModelFromMRFilename(name)
+      if (model) counts.modelName = model
+    }
+  }
 }
 
 /**
@@ -645,5 +711,13 @@ function extractModelFromMRFilename(fileName: string): string | null {
   // Segment 3 must be 15-digit IMEI
   if (!IMEI_REGEX.test(segments[3])) return null
   // Everything after the IMEI is Brand-Model (rejoin in case of extra hyphens)
-  return segments.slice(4).join('-')
+  // L8: Sanitize path separators and ".." to prevent path traversal in export
+  const model = segments.slice(4).join('-')
+  return model.replace(/[/\\]/g, '_').replace(/\.\./g, '_')
+}
+
+/** Extract a safe error message from an unknown catch value. */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return String(err)
 }

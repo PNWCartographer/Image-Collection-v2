@@ -64,7 +64,9 @@ public class W{
 $s=[W]::GetWindowLong([IntPtr]::new(${hwndStr}),-16)
 [W]::SetWindowLong([IntPtr]::new(${hwndStr}),-16,$s-bor 0x80000)
 `
-    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script])
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], () => {
+      // No-op callback — prevents unhandled 'error' event if PowerShell is unavailable
+    })
   } catch {
     // Non-critical — system menu is a convenience, not essential
   }
@@ -200,6 +202,10 @@ function registerIPC(): void {
     shell.openPath(logsDir)
   })
 
+  ipcMain.handle('shell:open-path', async (_event, path: string) => {
+    if (path) shell.openPath(path)
+  })
+
   ipcMain.handle('settings:get', (_event, key: string) => {
     return getSetting(key)
   })
@@ -227,6 +233,8 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  cancelSearch()
+  cancelExport()
   globalShortcut.unregisterAll()
   app.quit()
 })

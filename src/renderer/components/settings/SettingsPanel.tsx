@@ -25,22 +25,22 @@ const TOOLTIPS: Record<string, Record<Lang, string>> = {
     'zh-CN': '跳过：如果目标位置已存在该 IMEI 文件夹，则保持不变。覆盖：用新的源数据替换目标位置中已有的文件夹。'
   },
   scanIndex: {
-    en: 'All: include every scan index (_1, _2, _3, etc.). First only: only _1 entries.',
-    'zh-TW': '全部：包含所有掃描索引（_1、_2、_3 等）。僅第一個：僅 _1 條目。',
-    'zh-CN': '全部：包含所有扫描索引（_1、_2、_3 等）。仅第一个：仅 _1 条目。'
+    en: 'Devices may be scanned more than once. "All" includes every scan attempt. "First only" includes only the first scan of each device.',
+    'zh-TW': '裝置可能被掃描多次。「全部」包含所有掃描紀錄。「僅第一個」僅包含每個裝置的首次掃描。',
+    'zh-CN': '设备可能被扫描多次。"全部"包含所有扫描记录。"仅第一个"仅包含每个设备的首次扫描。'
   },
   mrPass: {
-    en: 'Collects Model Recognition PASS images — devices the AI correctly identified. Searches ModelRecogImages/{date}/{Brand-Model}/ folders for .png files matching audit list IMEIs. Disables standard image collection.',
+    en: 'Collect images of devices the system correctly identified by model. Searches ModelRecogImages folders. When enabled, standard image collection is disabled.',
     'zh-TW': '收集模型辨識通過（PASS）圖片 — AI 正確辨識的裝置。在 ModelRecogImages/{日期}/{品牌-型號}/ 資料夾中搜尋與稽核清單 IMEI 匹配的 .png 檔案。啟用後將停用標準圖片收集。',
     'zh-CN': '收集模型识别通过（PASS）图片 — AI 正确识别的设备。在 ModelRecogImages/{日期}/{品牌-型号}/ 文件夹中搜索与审计列表 IMEI 匹配的 .png 文件。启用后将禁用标准图片收集。'
   },
   mrFail: {
-    en: 'Collects Model Recognition FAIL images — devices the AI misidentified (wrong placement, wrong color, wrong model). Searches ModelRecogImages/{date}/Error-Error/ for .png files matching audit list IMEIs.',
+    en: 'Collect images of devices the system misidentified (wrong model, wrong placement). Searches Error-Error folders in ModelRecogImages.',
     'zh-TW': '收集模型辨識失敗（FAIL）圖片 — AI 錯誤辨識的裝置（放置錯誤、顏色錯誤、型號錯誤）。在 ModelRecogImages/{日期}/Error-Error/ 中搜尋與稽核清單 IMEI 匹配的 .png 檔案。',
     'zh-CN': '收集模型识别失败（FAIL）图片 — AI 错误识别的设备（放置错误、颜色错误、型号错误）。在 ModelRecogImages/{日期}/Error-Error/ 中搜索与审计列表 IMEI 匹配的 .png 文件。'
   },
   aiImages: {
-    en: 'When enabled, collects only the FD/ subfolder contents (AI detection images) from matched IMEI folders. Standard scan images at the folder root are excluded. When disabled, standard export includes FD/ as part of the full IMEI folder.',
+    en: 'When enabled, exports only the automated inspection photos (FD/ subfolder) instead of all images. When disabled, all images in the folder are exported including inspection photos.',
     'zh-TW': '啟用時，僅從匹配的 IMEI 資料夾中收集 FD/ 子資料夾內容（AI 偵測圖片）。資料夾根目錄的標準掃描圖片將被排除。停用時，標準匯出會將 FD/ 作為完整 IMEI 資料夾的一部分包含在內。',
     'zh-CN': '启用时，仅从匹配的 IMEI 文件夹中收集 FD/ 子文件夹内容（AI 检测图片）。文件夹根目录的标准扫描图片将被排除。禁用时，标准导出会将 FD/ 作为完整 IMEI 文件夹的一部分包含在内。'
   }
@@ -93,7 +93,7 @@ const ORGANIZE_OPTIONS: OrganizeOption[] = [
 export interface SettingsState {
   action: 'copy' | 'move'
   imageType: 'both' | 'bmp' | 'jpeg'
-  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei'
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei' | 'by-model'
   duplicates: 'skip' | 'overwrite'
   scanIndex: 'all' | 'first_only'
   mrPass: boolean
@@ -326,7 +326,7 @@ export default function SettingsPanel({ lang, onSettingsChange }: SettingsPanelP
             </h3>
             <p className={styles.modalText}>
               {t(lang,
-                'This will MOVE data off the NAS. Source files will be permanently deleted after transfer. Use at your own risk!',
+                'This will MOVE data off the source folder. Source files will be permanently deleted after transfer. Use at your own risk!',
                 '此操作將從NAS移動資料。來源檔案將在傳輸後被永久刪除。風險自負！',
                 '此操作将从NAS移动数据。源文件将在传输后被永久删除。风险自负！')}
             </p>

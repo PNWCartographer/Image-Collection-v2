@@ -129,6 +129,8 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
           scanFolder(lastPath, newSource.folderToggles)
           window.electronAPI.settingsSet('sources', [newSource])
           window.electronAPI.settingsSet('activeSourceId', newSource.id)
+          // Clean up legacy keys to prevent re-migration
+          window.electronAPI.settingsSet('lastRootPath', null)
         }
       }
     })()
@@ -420,7 +422,7 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
               −
             </button>
             <Tooltip text={t(lang,
-              'Save and switch between multiple NAS or shared folder roots. Each source remembers its own folder toggle states.',
+              'Save and switch between multiple network or shared folder roots. Each source remembers its own folder toggle states.',
               '儲存並切換多個 NAS 或共享資料夾根目錄。每個資料來源獨立記住其資料夾選擇狀態。',
               '保存并切换多个 NAS 或共享文件夹根目录。每个数据源独立记住其文件夹选择状态。')}
             />
@@ -507,7 +509,10 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
         <div className={styles.emptyGrid}>
           {folderPath
             ? t(lang, 'No subfolders found', '未找到子資料夾', '未找到子文件夹')
-            : t(lang, 'Select a shared folder to scan', '選擇共享資料夾以掃描', '选择共享文件夹以扫描')}
+            : t(lang,
+              'Browse to your network folder containing machine folders (e.g. M8, M9, M10...)',
+              '瀏覽至包含機器資料夾的網路資料夾（例如 M8、M9、M10...）',
+              '浏览至包含机器文件夹的网络文件夹（例如 M8、M9、M10...）')}
         </div>
       )}
 

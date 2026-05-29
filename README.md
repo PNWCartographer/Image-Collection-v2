@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.3.0 — feature-complete.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.4.0 — hardened release.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -353,6 +353,68 @@ NAS_ROOT/                              (e.g. Z:\)
 - Scan index: integer after the underscore (`_1`, `_2`, `_3`, etc.) — sequential number in the series of scans for that device.
 - Date folders: always 8 digits in `YYYYMMDD` format.
 - MR image filenames: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png` (IMEI is the 4th hyphen-delimited segment).
+
+---
+
+## Version History
+
+### v1.4.0 — Hardened Release (2026-05-28)
+
+Comprehensive reliability and safety audit. 30 issues identified and resolved across all severity tiers.
+
+**Critical fixes:**
+- **Move mode safety** — source deletion now blocked when image type filter is active (would destroy unselected files), when no files were copied, or when copies failed
+- **Atomic overwrite** — destination folders are backed up before overwrite and restored on failure, preventing data loss from interrupted exports
+- **Logger crash protection** — stream error handler prevents unhandled exceptions from crashing the app
+
+**Reliability improvements:**
+- Destination-inside-source validation prevents recursive copy loops
+- Skip-existing completeness check re-exports folders with fewer than 50% of expected files
+- Circuit breaker aborts export after 10 consecutive failures (network drop detection)
+- NAS readdir timeout (15s) prevents indefinite hangs on unresponsive shares
+- Recursive file counting for AI Images mode (counts FD/ subfolder contents)
+- MR scan errors now tracked and reported instead of silently swallowed
+- Smart Search machine-only fallback sends unfound IMEIs to broad scan
+
+**Export improvements:**
+- Long path support on Windows (\\\\?\\ prefix for paths > 240 chars)
+- Path traversal sanitization on machine/folder/model names
+- Destination writability test before starting export
+- Move mode removeSource failures now reported accurately in results
+- "Open Folder" button after export completes
+
+**Search improvements:**
+- Scan error details surfaced in results (paths + error codes)
+- Scan index filtered count tracked and reported
+- MR IMEI extraction scans all filename segments (robust to format variations)
+- Model name sanitization prevents path traversal in export paths
+- Bounded concurrency for file counting (max 8 per worker)
+
+**UI/UX improvements:**
+- Workflow guide replaces blank "Ready" status on first launch
+- User-friendly error messages for common failures (ENOENT, EPERM, ENOSPC, ETIMEDOUT)
+- Stale results cleared when loading a new audit file
+- Double-click search guard prevents duplicate concurrent searches
+- Streaming match counter debounced with requestAnimationFrame
+- Missing IMEIs list paginated (prevents browser freeze on large lists)
+- File extension validation on audit file drag-and-drop
+- Improved tooltips across all settings with plain-language descriptions
+- Incomplete detection threshold corrected (was off-by-one)
+
+**Parser improvements:**
+- Duplicate IMEI hints preserve first occurrence (not last)
+- Bare-number machine pattern restricted to 1-99 range
+- Unsupported file formats now rejected with clear error
+
+### v1.3.0 — Feature Complete (2026-05-20)
+
+- Smart Search with auto-detected Machine + Date columns
+- MR PASS/FAIL image collection
+- AI Images (FD/ subfolder) mode
+- 7 organization modes including By IMEI and By Model
+- Trilingual UI (English, Traditional Chinese, Simplified Chinese)
+- Search history with last 5 entries
+- Dark/Light theme with Liquid Glass design
 
 ---
 

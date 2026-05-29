@@ -51,6 +51,14 @@ export default function AuditPanel({ lang, onAuditLoaded, smartSearch, onSmartSe
     const file = e.dataTransfer.files[0]
     if (file) {
       const filePath = window.electronAPI.getFilePath(file)
+      const ext = filePath.toLowerCase().split('.').pop() || ''
+      if (!['csv', 'xlsx', 'xls', 'txt'].includes(ext)) {
+        setError(t(lang,
+          'Unsupported file type. Please use CSV, Excel (.xlsx/.xls), or TXT files.',
+          '不支援的檔案類型。請使用 CSV、Excel (.xlsx/.xls) 或 TXT 檔案。',
+          '不支持的文件类型。请使用 CSV、Excel (.xlsx/.xls) 或 TXT 文件。'))
+        return
+      }
       loadFile(filePath)
     }
   }

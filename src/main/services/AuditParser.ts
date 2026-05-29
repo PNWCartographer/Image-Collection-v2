@@ -51,7 +51,7 @@ const MACHINE_PATTERNS: RegExp[] = [
   /^M-?0*(\d+)$/i,                  // M8, M08, M-8, M-08
   /^[A-Za-z]{1,10}[-_\s]M-?0*(\d+)$/i,  // SG-M16, LAX-M08, SG_M16, SG M16 (site prefix)
   /^Machine\s*(\d+)$/i,             // Machine 8, Machine08
-  /^0*(\d+)$/                       // 08, 8 (bare number)
+  /^0*(\d{1,2})$/                   // 08, 8 (bare number, 1-2 digits only)
 ]
 
 function normalizeMachine(raw: string): string | null {
@@ -60,7 +60,13 @@ function normalizeMachine(raw: string): string | null {
   for (const pattern of MACHINE_PATTERNS) {
     const match = trimmed.match(pattern)
     if (match) {
-      return `M${parseInt(match[1], 10)}`
+      const num = parseInt(match[1], 10)
+      // Bare numbers (last pattern) must be in reasonable machine range 1-99
+      // to avoid false positives from quantity/count columns
+      if (pattern === MACHINE_PATTERNS[MACHINE_PATTERNS.length - 1] && (num < 1 || num > 99)) {
+        continue
+      }
+      return `M${num}`
     }
   }
   return null
@@ -293,7 +299,9 @@ function buildHints(
     }
 
     if (hint.machine || hint.date) {
-      hints[imei] = hint
+      if (!hints[imei]) {
+        hints[imei] = hint
+      }
     }
   }
 
@@ -415,7 +423,7 @@ export async function parseAuditFile(filePath: string): Promise<AuditParseResult
       parsed = await parseTXT(filePath)
       break
     default:
-      parsed = await parseTXT(filePath)
+      throw new Error(`Unsupported file format: ${extname(filePath)}`)
   }
 
   // Extract IMEI values from the detected column

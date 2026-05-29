@@ -24,7 +24,7 @@ export class ExportLogger {
   }
 
   private write(level: string, msg: string): void {
-    if (!this.stream) return
+    if (!this.stream || this.stream.destroyed) return
     const ts = new Date().toISOString()
     this.stream.write(`[${ts}] [${level}] ${msg}\n`)
   }
@@ -69,11 +69,16 @@ export async function createExportLogger(logsDir: string): Promise<ExportLogger>
     // Create new log file with timestamp
     const now = new Date()
     const pad = (n: number): string => String(n).padStart(2, '0')
-    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${String(now.getMilliseconds()).padStart(3, '0')}`
     const logFile = `export-${ts}.log`
     const logPath = join(logsDir, logFile)
 
     const stream = createWriteStream(logPath, { encoding: 'utf-8', flags: 'w' })
+    stream.on('error', () => {
+      // Disable logging on stream error (disk full, permission change)
+      // Export continues without logging rather than crashing
+      stream.destroy()
+    })
 
     return new ExportLogger(stream, logPath)
   } catch {

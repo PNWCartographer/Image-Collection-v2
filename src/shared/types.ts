@@ -89,6 +89,10 @@ export interface SearchResult {
   totalSearched: number
   /** Number of folders that failed to read (network errors, permission issues). */
   scanErrors: number
+  /** Detailed error messages for scan failures (paths + error codes). */
+  scanErrorDetails?: string[]
+  /** Number of scan-index entries removed by the first_only filter. */
+  scanIndexFiltered?: number
   elapsedMs: number
 }
 
@@ -163,6 +167,7 @@ export interface ElectronAPI {
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
   saveFile: (defaultName: string, filters: { name: string; extensions: string[] }[], content: string) => Promise<boolean>
   openLogsFolder: () => void
+  openPath: (path: string) => Promise<void>
   getFilePath: (file: File) => string
 
   settingsGet: (key: string) => Promise<unknown>

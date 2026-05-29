@@ -1,5 +1,5 @@
-import { readdir, copyFile, mkdir, rm, stat } from 'fs/promises'
-import { join, extname, dirname } from 'path'
+import { readdir, copyFile, mkdir, rm, stat, rename, writeFile, unlink } from 'fs/promises'
+import { join, extname, dirname, resolve, sep } from 'path'
 import type { ExportRequest, ExportProgress, ExportResult, SearchMatch } from '../../shared/types'
 import { formatElapsed, formatBytes, PROGRESS_THROTTLE_MS } from '../../shared/utils'
 import { pooledVoid, type CancelToken } from '../../shared/pool'
@@ -38,21 +38,25 @@ function errorMessage(err: unknown): string {
 }
 
 function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
+  const machine = sanitizePathSegment(match.machineName)
+  const folder = sanitizePathSegment(match.folderName)
+  const model = sanitizePathSegment(match.modelName || 'Unknown')
+
   switch (organize) {
     case 'flat':
-      return join(dest, match.folderName)
+      return join(dest, folder)
     case 'by-machine':
-      return join(dest, match.machineName, match.folderName)
+      return join(dest, machine, folder)
     case 'by-date':
-      return join(dest, match.date, match.folderName)
+      return join(dest, match.date, folder)
     case 'machine-date':
-      return join(dest, match.machineName, match.date, match.folderName)
+      return join(dest, machine, match.date, folder)
     case 'date-machine':
-      return join(dest, match.date, match.machineName, match.folderName)
+      return join(dest, match.date, machine, folder)
     case 'by-imei':
-      return join(dest, match.imei, `${match.machineName}_${match.date}_${match.scanIndex}`)
+      return join(dest, match.imei, `${machine}_${match.date}_${match.scanIndex}`)
     case 'by-model':
-      return join(dest, match.modelName || 'Unknown', match.folderName)
+      return join(dest, model, folder)
     default: {
       const _exhaustive: never = organize
       return _exhaustive
@@ -128,11 +132,83 @@ async function pathExists(path: string, type: 'file' | 'directory'): Promise<boo
   }
 }
 
+// ── M9: Long path helper for Windows ──────────────────────────────
+/** Prefix long paths with \\?\ on Windows to bypass the 260-char limit. */
+function toLongPath(p: string): string {
+  if (process.platform === 'win32' && p.length > 240 && !p.startsWith('\\\\?\\')) {
+    return `\\\\?\\${resolve(p)}`
+  }
+  return p
+}
+
+// ── M13: Path traversal sanitization ──────────────────────────────
+/** Strip `.`, `..`, and path separators to prevent directory traversal. */
+function sanitizePathSegment(name: string): string {
+  // Remove path separators
+  let sanitized = name.replace(/[/\\]/g, '')
+  // Remove standalone `.` and `..` segments
+  sanitized = sanitized.replace(/^\.{1,2}$/, '_')
+  // Remove leading/trailing dots that could be abused
+  sanitized = sanitized.replace(/^\.+/, '').replace(/\.+$/, '')
+  return sanitized || '_'
+}
+
+// ── H2: Destination-inside-source validation ──────────────────────
+/** Check if child path is a subdirectory of parent path. */
+function isSubPath(child: string, parent: string): boolean {
+  const resolvedChild = resolve(child).toLowerCase() + sep
+  const resolvedParent = resolve(parent).toLowerCase() + sep
+  return resolvedChild.startsWith(resolvedParent)
+}
+
+// ── C2: Atomic overwrite helper ───────────────────────────────────
+/**
+ * Atomically overwrite a destination folder by:
+ * 1. Renaming old dest to a backup name
+ * 2. Running the copy operation
+ * 3. Deleting the backup on success, or restoring it on failure
+ */
+async function atomicOverwrite(
+  destPath: string,
+  copyFn: () => Promise<CopyStats | null>,
+  logger: ExportLogger
+): Promise<CopyStats | null> {
+  const backupPath = `${destPath}.old-${Date.now()}`
+  await rename(destPath, backupPath)
+  logger.info(`  Renamed existing folder to backup: ${backupPath}`)
+
+  try {
+    const result = await copyFn()
+    // Copy succeeded — remove the backup
+    try {
+      await rm(backupPath, { recursive: true, force: true })
+      logger.info(`  Removed backup after successful copy`)
+    } catch (cleanupErr) {
+      logger.warn(`  Could not remove backup ${backupPath}: ${errorMessage(cleanupErr)}`)
+    }
+    return result
+  } catch (err) {
+    // Copy failed — restore the backup
+    logger.error(`  Copy failed, restoring backup: ${errorMessage(err)}`)
+    try {
+      await rm(destPath, { recursive: true, force: true })
+    } catch { /* dest may not exist */ }
+    try {
+      await rename(backupPath, destPath)
+      logger.info(`  Backup restored successfully`)
+    } catch (restoreErr) {
+      logger.error(`  CRITICAL: Could not restore backup ${backupPath}: ${errorMessage(restoreErr)}`)
+    }
+    throw err
+  }
+}
+
 // ── Parallel folder copy with file-level concurrency ────────────────
 
 interface CopyStats {
   filesCopied: number
   bytesCopied: number
+  filesFailed: number
 }
 
 /**
@@ -150,6 +226,7 @@ async function copyFolderParallel(
 ): Promise<CopyStats | null> {
   let filesCopied = 0
   let bytesCopied = 0
+  let filesFailed = 0
 
   const effectiveSrc = aiImages ? join(srcDir, 'FD') : srcDir
 
@@ -163,7 +240,7 @@ async function copyFolderParallel(
   }
 
   try {
-    await mkdir(destDir, { recursive: true })
+    await mkdir(toLongPath(destDir), { recursive: true })
     const entries = await readdir(effectiveSrc, { withFileTypes: true })
 
     // Split into files (parallel) and directories (recurse)
@@ -178,11 +255,12 @@ async function copyFolderParallel(
 
       try {
         const fileStat = await stat(srcPath)
-        await copyFile(srcPath, dstPath)
+        await copyFile(toLongPath(srcPath), toLongPath(dstPath))
         filesCopied++
         bytesCopied += fileStat.size
         logger.info(`    ${file.name}  (${formatBytes(fileStat.size)})`)
       } catch (err) {
+        filesFailed++
         logger.error(`    COPY FAILED ${file.name}: ${errorMessage(err)}`)
       }
     })
@@ -201,13 +279,14 @@ async function copyFolderParallel(
       if (sub) {
         filesCopied += sub.filesCopied
         bytesCopied += sub.bytesCopied
+        filesFailed += sub.filesFailed
       }
     }
   } catch (err) {
     logger.error(`  DIR READ FAILED ${effectiveSrc}: ${errorMessage(err)}`)
   }
 
-  return { filesCopied, bytesCopied }
+  return { filesCopied, bytesCopied, filesFailed }
 }
 
 async function removeSource(folderPath: string): Promise<boolean> {
@@ -254,6 +333,31 @@ export async function exportResults(
     await logger.close()
     throw new Error(`Destination not accessible: ${errorMessage(err)}`)
   }
+
+  // M14: Verify actual file write permission (mkdir can succeed where writes fail)
+  const testFile = join(destination, `.write-test-${Date.now()}`)
+  try {
+    await writeFile(testFile, 'test')
+    await unlink(testFile)
+  } catch (err) {
+    try { await unlink(testFile) } catch { /* test file may not exist */ }
+    await logger.close()
+    throw new Error(`Destination not writable: ${errorMessage(err)}`)
+  }
+
+  // H2: Prevent destination inside any source root (would cause recursive copies)
+  const resolvedDest = resolve(destination)
+  for (const match of matches) {
+    const sourceParent = dirname(resolve(match.sourcePath))
+    if (isSubPath(resolvedDest, sourceParent)) {
+      await logger.close()
+      throw new Error(
+        `Destination "${destination}" is inside source root "${sourceParent}". ` +
+        `Choose a destination outside the NAS source directories.`
+      )
+    }
+  }
+
   const totalItems = matches.length
 
   // ── Log header ──
@@ -297,6 +401,10 @@ export async function exportResults(
   }
 
   let fdMissingCount = 0
+  // M1: Circuit breaker — abort after too many consecutive failures
+  let consecutiveFailures = 0
+  let cancelledByCircuitBreaker = false
+  const CIRCUIT_BREAKER_THRESHOLD = 10
 
   // Initial progress
   if (matches.length > 0) {
@@ -340,23 +448,30 @@ export async function exportResults(
           return
         }
 
-        await mkdir(destDir, { recursive: true })
+        await mkdir(toLongPath(destDir), { recursive: true })
         if (exists && duplicates === 'overwrite') {
           logger.info(`  Overwriting existing file`)
         }
 
         const fileStat = await stat(match.sourcePath)
-        await copyFile(match.sourcePath, destFilePath)
+        await copyFile(toLongPath(match.sourcePath), toLongPath(destFilePath))
         totalFilesCopied++
         totalBytesCopied += fileStat.size
         exported++
+        consecutiveFailures = 0
 
         const elapsed = Date.now() - folderStart
         logger.info(`  ✓ 1 file  (${formatBytes(fileStat.size)})  ${elapsed}ms`)
         // MR exports always copy — never delete source MR images from NAS
       } catch (err) {
         failed++
+        consecutiveFailures++
         recordFailure(err, match, failedItems, logger)
+        if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+          logger.error(`Export aborted: too many consecutive failures (${CIRCUIT_BREAKER_THRESHOLD})`)
+          cancelledByCircuitBreaker = true
+          token.cancelled = true
+        }
       }
     } else {
       // ── Standard export: folder-level copy ──
@@ -369,26 +484,44 @@ export async function exportResults(
       try {
         const exists = await pathExists(destPath, 'directory')
 
+        // H4: When skipping existing folders, verify they are reasonably complete.
+        // If the destination has less than 50% of expected files, re-export
+        // instead of skipping — the folder is likely from an interrupted export.
         if (exists && duplicates === 'skip') {
-          skipped++
-          logger.warn(`  SKIPPED — folder already exists at destination`)
-          sendProgress(match)
-          return
+          const destFiles = await readdir(destPath)
+          const destFileCount = destFiles.length
+          const expectedFiles = match.totalFiles
+          if (expectedFiles > 0 && destFileCount < expectedFiles * 0.5) {
+            logger.warn(`  Destination has ${destFileCount}/${expectedFiles} files — likely incomplete, re-exporting with overwrite`)
+            // Fall through to overwrite behavior instead of skipping
+            await rm(destPath, { recursive: true, force: true })
+          } else {
+            skipped++
+            logger.warn(`  SKIPPED — folder already exists at destination`)
+            sendProgress(match)
+            return
+          }
         }
 
+        // C2: Atomic overwrite — rename old dest to backup, copy, then clean up
+        let copyResult: CopyStats | null
         if (exists && duplicates === 'overwrite') {
-          await rm(destPath, { recursive: true, force: true })
-          logger.info(`  Overwriting existing destination folder`)
+          logger.info(`  Overwriting existing destination folder (atomic)`)
+          copyResult = await atomicOverwrite(
+            destPath,
+            () => copyFolderParallel(match.sourcePath, destPath, imageType, aiImages, token, logger),
+            logger
+          )
+        } else {
+          copyResult = await copyFolderParallel(
+            match.sourcePath,
+            destPath,
+            imageType,
+            aiImages,
+            token,
+            logger
+          )
         }
-
-        const copyResult = await copyFolderParallel(
-          match.sourcePath,
-          destPath,
-          imageType,
-          aiImages,
-          token,
-          logger
-        )
 
         if (copyResult === null) {
           fdMissingCount++
@@ -402,21 +535,43 @@ export async function exportResults(
         totalFilesCopied += copyResult.filesCopied
         totalBytesCopied += copyResult.bytesCopied
         exported++
+        consecutiveFailures = 0
 
         const elapsed = Date.now() - folderStart
         logger.info(`  ✓ ${copyResult.filesCopied} files  (${formatBytes(copyResult.bytesCopied)})  ${elapsed}ms`)
 
         if (action === 'move') {
-          const removed = await removeSource(match.sourcePath)
-          if (removed) {
-            logger.warn(`  Source deleted (move mode)`)
+          // C1: Block source deletion when filtering by image type — deleting the
+          // entire source folder would destroy file types that were not exported.
+          if (imageType !== 'both') {
+            logger.warn(`  Source NOT deleted — move mode with image type filter "${imageType}" would destroy unselected files`)
+          } else if (copyResult.filesCopied === 0) {
+            logger.warn(`  Source NOT deleted — no files were copied`)
+          } else if (copyResult.filesFailed > 0) {
+            logger.warn(`  Source NOT deleted — ${copyResult.filesFailed} file(s) failed to copy`)
           } else {
-            logger.error(`  Source deletion FAILED — files may still exist at ${match.sourcePath}`)
+            const removed = await removeSource(match.sourcePath)
+            if (removed) {
+              logger.warn(`  Source deleted (move mode)`)
+            } else {
+              // H12: When removeSource fails, count it as a failure so the user
+              // sees accurate counts instead of a false success.
+              exported--
+              failed++
+              failedItems.push({ imei: match.imei, sourcePath: match.sourcePath, error: 'Source deletion failed after copy' })
+              logger.error(`  Source deletion FAILED — files may still exist at ${match.sourcePath}`)
+            }
           }
         }
       } catch (err) {
         failed++
+        consecutiveFailures++
         recordFailure(err, match, failedItems, logger)
+        if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+          logger.error(`Export aborted: too many consecutive failures (${CIRCUIT_BREAKER_THRESHOLD})`)
+          cancelledByCircuitBreaker = true
+          token.cancelled = true
+        }
       }
     }
 
@@ -431,7 +586,7 @@ export async function exportResults(
   logger.info('═══════════════════════════════════════════════════════════')
   logger.info('  EXPORT COMPLETE')
   logger.info('═══════════════════════════════════════════════════════════')
-  logger.info(`Status     : ${token.cancelled ? 'CANCELLED' : 'SUCCESS'}`)
+  logger.info(`Status     : ${cancelledByCircuitBreaker ? 'ABORTED (circuit breaker)' : token.cancelled ? 'CANCELLED' : 'SUCCESS'}`)
   logger.info(`Exported   : ${exported} folders  (${totalFilesCopied} files, ${formatBytes(totalBytesCopied)})`)
   logger.info(`Skipped    : ${skipped}`)
   logger.info(`Failed     : ${failed}${fdMissingCount > 0 ? ` (${fdMissingCount} missing FD/)` : ''}`)
@@ -450,7 +605,7 @@ export async function exportResults(
   await logger.close()
 
   onProgress({
-    phase: token.cancelled ? 'cancelled' : 'complete',
+    phase: (token.cancelled || cancelledByCircuitBreaker) ? 'cancelled' : 'complete',
     percent: 100,
     currentIMEI: '',
     currentFolder: '',
