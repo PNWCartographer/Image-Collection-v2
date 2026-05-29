@@ -298,6 +298,31 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 
 ---
 
+## Milestone 14: Auto-Update System
+> **Gate**: App checks for updates on launch → shows update dialog when newer version available → user clicks Update → new version installs and relaunches without manual uninstall
+
+**Status**: Blocked — awaiting IT approval for update file hosting location.
+
+**IT Request (submitted 2026-05-28)**: Need a static HTTPS endpoint to host 3 files per release (`latest.yml`, `.exe` installer, `.blockmap`). Options presented: internal IIS server or external domain (`darksquare.dev`). Awaiting response.
+
+| # | Task | Details |
+|---|------|---------|
+| 14.1 | IT approval for hosting | Get approved hosting URL — internal server (IIS) or external domain |
+| 14.2 | Configure electron-builder publish | Add `publish` block with `generic` provider pointing to approved URL |
+| 14.3 | Add electron-updater dependency | `npm install electron-updater` |
+| 14.4 | Implement update check on launch | `autoUpdater.checkForUpdates()` in main process after window ready |
+| 14.5 | Build update notification dialog | Glass-styled dialog: version info, changelog summary, "Update Now" / "Later" buttons |
+| 14.6 | Handle download progress | Progress bar in update dialog during download |
+| 14.7 | Install and relaunch | `autoUpdater.quitAndInstall()` on user confirmation — NSIS overwrites in-place |
+| 14.8 | Error handling | Graceful fallback if update server unreachable (silent fail, no crash) |
+| 14.9 | URL whitelisting | Coordinate with IT to whitelist the hosting URL on production floor PCs |
+| 14.10 | Release workflow documentation | Document the 3-file upload process for each new version |
+| 14.11 | End-to-end testing | Test full update cycle: old version → detects new → downloads → installs → launches |
+
+**Checkpoint**: Install v1.4.0 on a production PC. Upload v1.5.0 files to hosting endpoint. Launch app → "Update available: v1.5.0" dialog appears. Click "Update Now" → app downloads, installs, and relaunches at v1.5.0. No manual uninstall required. If hosting is unreachable → app launches normally with no error.
+
+---
+
 ## Milestone Dependency Map
 
 ```
@@ -310,6 +335,6 @@ M0 (Scaffold)
            └─► M8 (Multi-Source + History)
                 └─► M9 (Polish)
                      ├─► M10a (MR PASS) ─┬─► M12 (Packaging) ──► M13 (README)
-                     ├─► M10b (MR FAIL) ┘
-                     └─► M11 (Pending) [blocked on v1 docs]
+                     ├─► M10b (MR FAIL) ┘         │
+                     └─► M11 (Pending)             └─► M14 (Auto-Update) [blocked on IT approval]
 ```
