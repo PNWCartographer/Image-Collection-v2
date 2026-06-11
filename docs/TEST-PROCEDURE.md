@@ -1,7 +1,7 @@
 # Image Collection v2 — Test Procedure
 
-**Covers:** All implemented milestones — UI, search, export, multi-source, history, bilingual, packaging  
-**Last updated:** 2026-05-15
+**Covers:** All implemented milestones — UI, search, export, multi-source, history, bilingual, packaging, MR search reliability & diagnostics (v1.5)  
+**Last updated:** 2026-06-10
 
 ---
 
@@ -109,7 +109,7 @@
 |---|------|----------|
 | 7.1 | Change Action dropdown (Copy/Move) | Selection updates |
 | 7.2 | Change Image Type dropdown (Both/BMP/JPEG) | Selection updates |
-| 7.3 | Open Organize dropdown | Custom dropdown opens with 6 options, each with description |
+| 7.3 | Open Organize dropdown | Custom dropdown opens with 7 options (incl. Machine → Model), each with description |
 | 7.4 | Select each Organize option | Selected option highlights, dropdown closes, trigger button updates |
 | 7.5 | Click outside open Organize dropdown | Dropdown closes |
 | 7.6 | Change Duplicates dropdown (Skip/Overwrite) | Selection updates |
@@ -223,6 +223,9 @@
 | 15.5 | Run search on a very large folder set | Progress bar updates smoothly, app remains responsive |
 | 15.6 | Load multiple audit files in sequence | Previous result replaced by new one each time |
 | 15.7 | Run multiple searches in sequence | Previous results replaced, no stale data |
+| 15.8 | Load an audit file (with date hints), toggle MR PASS/FAIL **without** re-uploading, run search | Search runs correctly; results are stable — no need to re-upload the audit file after changing a setting/toggle |
+| 15.9 | Load an audit file, let the date range auto-populate, then immediately run search | Search uses the auto-populated (committed) date range, not a stale/empty range |
+| 15.10 | Change the date range or another setting after a search, run again without re-uploading | New setting takes effect on the next search |
 
 ---
 
@@ -287,6 +290,8 @@
 | 20.4 | Set Organize to Machine → Date, export | Two-level nesting: dest/M8/20260515/IMEI_idx/ |
 | 20.5 | Set Organize to Date → Machine, export | Two-level nesting: dest/20260515/M8/IMEI_idx/ |
 | 20.6 | Set Organize to By IMEI, export | Grouped by IMEI: dest/350.../M8_20260515_192/ |
+| 20.7 | Set Organize to Machine → Model (standard search), export | Two-level nesting by parsed model: dest/M8/Apple-iPhone13Pro/IMEI_idx/ |
+| 20.8 | Set Organize to Machine → Model with an MR search, export | MR layout: dest/M8/<Model\|Error-Error>/IMEI/<date>_<tag>.png |
 
 ---
 
@@ -313,10 +318,14 @@
 
 | # | Test | Expected |
 |---|------|----------|
-| 23.1 | Enable MR PASS, run search and export | .png files exported with correct naming and organization |
-| 23.2 | Enable MR FAIL, run search and export | Error-Error .png files exported |
-| 23.3 | Enable both MR PASS and MR FAIL | Combined results from Brand-Model and Error-Error folders |
-| 23.4 | MR export in Move mode | MR images are always copied (never deleted from source) |
+| 23.1 | Enable MR PASS (only), run search | Search scans **both** Brand-Model and Error-Error; results include PASS-tagged (green) and FAIL-tagged (red) matches per where each image was found |
+| 23.2 | Enable MR FAIL (only), run search | Same both-folder scan and tagging as 23.1 — toggle choice does not narrow the search path |
+| 23.3 | Enable both MR PASS and MR FAIL | Identical result set to 23.1/23.2 (enabling either toggle already scans everything) |
+| 23.4 | Run an MR search with a "wrong color" style audit list (devices graded wrong-color whose images sit in PASS folders) | Every listed IMEI's image is returned; wrong-color devices appear tagged PASS (because their image is in a model folder, not Error-Error) — none are dropped as missing |
+| 23.5 | Confirm an audit IMEI that is genuinely only in Error-Error | Returned and tagged FAIL |
+| 23.6 | Export MR results | .png files exported with correct naming and organization (PASS/FAIL reflected in tag/folder) |
+| 23.7 | MR export in Move mode | MR images are always copied (never deleted from source) |
+| 23.8 | MR fallback: include an IMEI whose image is in a date folder one day off from its hint | IMEI is still found via the per-machine MR fallback / ±1-day lookup, not reported missing |
 
 ---
 
@@ -327,6 +336,18 @@
 | 24.1 | Complete an export, click "View Log" in status bar | Logs folder opens in Explorer |
 | 24.2 | Verify log file contents | Header with settings, per-file entries, summary with throughput |
 | 24.3 | Run 4 exports | Only 3 most recent log files remain (oldest rotated) |
+
+---
+
+## 24b. Search Log
+
+| # | Test | Expected |
+|---|------|----------|
+| 24b.1 | Run an MR search, then check `%APPDATA%/Image Collection v2/logs/` | A new `search-<timestamp>.log` file is present (separate from export logs) |
+| 24b.2 | Open the search log | Shows the request summary (mode, IMEI/hint counts, MR + SmartSearch flags, scan-index filter, date range, folders, root) and the **path decision** (targeted vs full-discovery) with per-machine folder counts |
+| 24b.3 | Verify the log records fallbacks and errors | Fallback transitions and scan errors are logged; a final summary line shows matches, missing, foldersScanned, scanErrors, elapsed |
+| 24b.4 | After the search completes, click "View Log" in the status bar | The specific `search-*.log` for that run opens (falls back to opening the logs folder if no search-log path is available) |
+| 24b.5 | Run 4 searches | Only the 3 most recent search logs remain (oldest rotated); export logs are unaffected |
 
 ---
 

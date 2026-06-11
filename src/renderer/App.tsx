@@ -10,7 +10,7 @@ import ResultsPanel from './components/results/ResultsPanel'
 import ProgressBar from './components/common/ProgressBar'
 import ActionButtons from './components/common/ActionButtons'
 import type { AuditParseResult, SearchProgress, SearchResult, SearchMatch, ExportProgress, ExportResult, ExportRequest, SearchHistoryEntry } from '../shared/types'
-import { formatElapsed, generateId } from '../shared/utils'
+import { formatElapsed, generateId, addDaysToYMD } from '../shared/utils'
 import { t } from '../shared/i18n'
 import type { Lang } from '../shared/i18n'
 import styles from './App.module.css'
@@ -118,6 +118,7 @@ function buildProgressState(
 }
 
 function friendlyError(msg: string, lang: Lang): string {
+  if (msg.includes('AUDIT_FILE_DOWNLOADING')) return lang === 'en' ? 'The audit file is still downloading from OneDrive. In File Explorer, right-click it → "Always keep on this device", wait for the green check, then try again.' : lang === 'zh-TW' ? '稽核檔案仍在從 OneDrive 下載。請在檔案總管中右鍵點擊該檔案 →「永遠保留在此裝置上」，待出現綠色勾號後再試一次。' : '审计文件仍在从 OneDrive 下载。请在文件资源管理器中右键点击该文件 →"始终保留在此设备上"，待出现绿色对勾后再试一次。'
   if (msg.includes('ENOENT')) return lang === 'en' ? 'Path not found — check that the network drive is connected and the folder exists.' : lang === 'zh-TW' ? '找不到路徑 — 請確認網路磁碟已連線且資料夾存在。' : '找不到路径 — 请确认网络驱动器已连接且文件夹存在。'
   if (msg.includes('EPERM') || msg.includes('EACCES')) return lang === 'en' ? 'Permission denied — you may not have access to this folder.' : lang === 'zh-TW' ? '權限不足 — 您可能無法存取此資料夾。' : '权限不足 — 您可能无法访问此文件夹。'
   if (msg.includes('EBUSY')) return lang === 'en' ? 'File is in use by another program — try again in a moment.' : lang === 'zh-TW' ? '檔案正被其他程式使用 — 請稍後再試。' : '文件正被其他程序使用 — 请稍后再试。'
@@ -144,6 +145,9 @@ function App(): JSX.Element {
   const [hasDestination, setHasDestination] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [smartSearch, setSmartSearch] = useState(true)
+  // Committed date range — read directly by handleSearch so an auto-populated
+  // range is never missed due to ref-vs-render timing (the old dateRangeRef bug).
+  const [dateRange, setDateRange] = useState<DateRange>({ dateStart: '', dateEnd: '' })
 
   const sourceNameRef = useRef('')
   const abortedRef = useRef(false)
@@ -154,9 +158,6 @@ function App(): JSX.Element {
     action: 'copy', imageType: 'both', organize: 'flat',
     duplicates: 'skip', scanIndex: 'all',
     mrPass: false, mrFail: false, aiImages: false, destination: ''
-  })
-  const dateRangeRef = useRef<DateRange>({
-    dateStart: '', dateEnd: ''
   })
 
   useEffect(() => {
@@ -263,7 +264,7 @@ function App(): JSX.Element {
   }, [])
 
   const handleDateRangeChange = useCallback((range: DateRange): void => {
-    dateRangeRef.current = range
+    setDateRange(range)
   }, [])
 
   const handleSearch = async (): Promise<void> => {
@@ -279,7 +280,7 @@ function App(): JSX.Element {
     setProgress(null)
     setError(null)
 
-    const dr = dateRangeRef.current
+    const dr = dateRange
     const settings = settingsRef.current
 
     try {
@@ -432,7 +433,8 @@ function App(): JSX.Element {
           missingIMEIs: [],
           totalSearched: 0,
           scanErrors: 0,
-          elapsedMs: 0
+          elapsedMs: 0,
+          logPath: ''
         }
       : null
 
@@ -454,7 +456,9 @@ function App(): JSX.Element {
       .sort()
     if (dates.length === 0) return null
     const min = dates[0]
-    const max = dates[dates.length - 1]
+    // End one day past the latest test date so a device tested near midnight —
+    // whose image folder rolls to the next day — is still inside the range.
+    const max = addDaysToYMD(dates[dates.length - 1], 1)
     return {
       start: `${min.substring(0, 4)}-${min.substring(4, 6)}-${min.substring(6, 8)}`,
       end: `${max.substring(0, 4)}-${max.substring(4, 6)}-${max.substring(6, 8)}`
@@ -531,7 +535,11 @@ function App(): JSX.Element {
       <StatusBar
         message={statusMsg}
         showLogLink
-        onOpenLogs={() => window.electronAPI.openLogsFolder()}
+        onOpenLogs={() =>
+          searchResult?.logPath
+            ? window.electronAPI.openPath(searchResult.logPath)
+            : window.electronAPI.openLogsFolder()
+        }
         lang={lang}
       />
     </div>

@@ -1,8 +1,9 @@
 import { readdir } from 'fs/promises'
 import { join } from 'path'
 import type { SearchRequest, SearchMatch, SearchProgress, SearchResult, AuditHint } from '../../shared/types'
-import { PROGRESS_THROTTLE_MS, IMEI_REGEX, DATE_FOLDER_REGEX } from '../../shared/utils'
+import { PROGRESS_THROTTLE_MS, IMEI_REGEX, DATE_FOLDER_REGEX, expandDateRange } from '../../shared/utils'
 import { pooled, type CancelToken } from '../../shared/pool'
+import { createSearchLogger, RotatingLogger } from './Logger'
 const MR_ROOT = 'modelrecogimages'
 const MR_FAIL_FOLDER = 'error-error'
 const SKIP_FOLDERS = new Set([
@@ -29,6 +30,16 @@ async function readdirWithTimeout(
   ])
 }
 
+/**
+ * A missing or non-directory path is expected during discovery (especially for
+ * speculative ±1-day folders) — it means "no images here", not a real failure.
+ * Real failures (permission, timeout, network) are still surfaced as scan errors.
+ */
+function isBenignDirError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException)?.code
+  return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
 /** Per-operation cancellation token — avoids race conditions between overlapping calls. */
 let activeToken: CancelToken = { cancelled: false }
 
@@ -47,13 +58,16 @@ interface SearchContext {
   scanErrorDetails: string[]
   /** Count of IMEIs skipped by scan-index filter (had only higher-index entries). */
   scanIndexFiltered: number
+  /** Diagnostic log for this search (no-op if logging unavailable). */
+  logger: RotatingLogger
 }
 
-function createSearchContext(imeis: string[]): SearchContext {
+async function createSearchContext(imeis: string[], logsDir?: string): Promise<SearchContext> {
   // Cancel any in-flight search before starting a new one
   activeToken.cancelled = true
   const token = { cancelled: false }
   activeToken = token
+  const logger = logsDir ? await createSearchLogger(logsDir) : new RotatingLogger(null, '')
   return {
     token,
     startTime: Date.now(),
@@ -62,8 +76,19 @@ function createSearchContext(imeis: string[]): SearchContext {
     foundIMEIs: new Set<string>(),
     scanErrors: 0,
     scanErrorDetails: [],
-    scanIndexFiltered: 0
+    scanIndexFiltered: 0,
+    logger
   }
+}
+
+/** Write the standard start-of-search header to the diagnostic log. */
+function logSearchHeader(logger: RotatingLogger, request: SearchRequest, mode: 'standard' | 'MR'): void {
+  logger.info('===== SEARCH STARTED =====')
+  logger.info(`Mode: ${mode}   IMEIs: ${request.imeis.length}   Hints: ${request.hints ? Object.keys(request.hints).length : 0}   SmartSearch: ${!!request.smartSearch}`)
+  logger.info(`MR PASS/FAIL: ${!!request.mrPass}/${!!request.mrFail}   ScanIndex: ${request.scanIndexFilter}`)
+  logger.info(`Date range: ${request.dateStart || '(none)'} .. ${request.dateEnd || '(none)'}`)
+  logger.info(`Folders (${request.selectedFolders.length}): ${request.selectedFolders.join(',')}`)
+  logger.info(`Root: ${request.rootPath}`)
 }
 
 type DateFolder = { machine: string; datePath: string; dateStr: string }
@@ -189,7 +214,7 @@ async function searchTargeted(
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
 ): Promise<{ searched: number; fallbackImeis: string[]; machineOnlyGroups: Map<string, string[]> }> {
-  const { token, matches, foundIMEIs } = ctx
+  const { token, matches, foundIMEIs, logger } = ctx
   const hints = request.hints!
   const selectedSet = new Set(request.selectedFolders)
 
@@ -201,13 +226,16 @@ async function searchTargeted(
   // Group by machine for a constrained broad scan
   const machineOnlyGroups = new Map<string, string[]>()
 
+  let droppedMachineNotSelected = 0
+  let droppedDateOutOfRange = 0
+
   for (const imei of request.imeis) {
     const hint: AuditHint | undefined = hints[imei]
 
     if (hint?.machine && hint?.date) {
       // Full hint — direct lookup
-      if (!selectedSet.has(hint.machine)) { fallbackImeis.push(imei); continue }
-      if (!isDateInRange(hint.date, request)) { fallbackImeis.push(imei); continue }
+      if (!selectedSet.has(hint.machine)) { fallbackImeis.push(imei); droppedMachineNotSelected++; continue }
+      if (!isDateInRange(hint.date, request)) { fallbackImeis.push(imei); droppedDateOutOfRange++; continue }
       const key = `${hint.machine}/${hint.date}`
       const existing = directLookups.get(key)
       if (existing) existing.push(imei)
@@ -226,6 +254,8 @@ async function searchTargeted(
   const lookupEntries = [...directLookups.entries()]
   let searched = 0
   const totalLookups = lookupEntries.length
+
+  logger.info(`Targeted: directLookups=${totalLookups}  machineOnly=${machineOnlyGroups.size}  fallback=${fallbackImeis.length}  (dropped: machineNotSelected=${droppedMachineNotSelected}, dateOutOfRange=${droppedDateOutOfRange})`)
 
   // Initial progress
   if (totalLookups > 0) {
@@ -256,8 +286,10 @@ async function searchTargeted(
       }
     } catch (err) {
       // Date folder not accessible — these IMEIs need fallback
-      ctx.scanErrors++
-      ctx.scanErrorDetails.push(`${machine}/${dateStr}: ${errorMessage(err)}`)
+      if (!isBenignDirError(err)) {
+        ctx.scanErrors++
+        ctx.scanErrorDetails.push(`${machine}/${dateStr}: ${errorMessage(err)}`)
+      }
       for (const imei of imeisInFolder) {
         if (!foundIMEIs.has(imei)) fallbackImeis.push(imei)
       }
@@ -290,7 +322,7 @@ async function searchBroad(
   onMatches: (matches: SearchMatch[]) => void,
   percentOffset: number = 0
 ): Promise<number> {
-  const { token, imeiSet, matches } = ctx
+  const { token, imeiSet, matches, logger } = ctx
 
   // Phase 1: Discover date folders (parallel across machines)
   const dateFolders: DateFolder[] = []
@@ -316,12 +348,16 @@ async function searchBroad(
       }
     } catch (err) {
       // Machine folder not accessible
-      ctx.scanErrors++
-      ctx.scanErrorDetails.push(`${folderName}: ${errorMessage(err)}`)
+      if (!isBenignDirError(err)) {
+        ctx.scanErrors++
+        ctx.scanErrorDetails.push(`${folderName}: ${errorMessage(err)}`)
+      }
     }
   })
 
   if (token.cancelled) return 0
+
+  logger.info(`Broad scan: discovered ${dateFolders.length} date folders across ${request.selectedFolders.length} machines`)
 
   const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress, percentOffset)
 
@@ -338,8 +374,10 @@ async function searchBroad(
       }
     } catch (err) {
       // Date folder not accessible
-      ctx.scanErrors++
-      ctx.scanErrorDetails.push(`${machine}/${dateStr}: ${errorMessage(err)}`)
+      if (!isBenignDirError(err)) {
+        ctx.scanErrors++
+        ctx.scanErrorDetails.push(`${machine}/${dateStr}: ${errorMessage(err)}`)
+      }
     }
 
     foldersScanned.value++
@@ -353,15 +391,18 @@ async function searchBroad(
 export async function searchIMEIs(
   request: SearchRequest,
   onProgress: (progress: SearchProgress) => void,
-  onMatches: (matches: SearchMatch[]) => void
+  onMatches: (matches: SearchMatch[]) => void,
+  logsDir?: string
 ): Promise<SearchResult> {
   // MR mode: entirely different search path
   if (request.mrPass || request.mrFail) {
-    return searchMRImages(request, onProgress, onMatches)
+    return searchMRImages(request, onProgress, onMatches, logsDir)
   }
 
-  const ctx = createSearchContext(request.imeis)
-  const { token, matches, foundIMEIs, startTime } = ctx
+  const ctx = await createSearchContext(request.imeis, logsDir)
+  const { token, foundIMEIs } = ctx
+
+  logSearchHeader(ctx.logger, request, 'standard')
 
   // Smart Search: targeted lookups when audit file had machine + date columns
   if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
@@ -370,7 +411,7 @@ export async function searchIMEIs(
     )
 
     if (token.cancelled) {
-      return buildResult(matches, request.imeis, foundIMEIs, startTime, directSearched, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
+      return buildResult(ctx, request.imeis, directSearched, onProgress)
     }
 
     let totalScanned = directSearched
@@ -401,12 +442,14 @@ export async function searchIMEIs(
     }
 
     if (token.cancelled || fallbackImeis.length === 0) {
-      return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
+      return buildResult(ctx, request.imeis, totalScanned, onProgress)
     }
 
     // Full broad scan for remaining IMEIs without any usable hints
     ctx.imeiSet.clear()
     for (const imei of fallbackImeis) ctx.imeiSet.add(imei)
+
+    ctx.logger.info(`Broad fallback: ${fallbackImeis.length} IMEIs without usable hints -> full scan`)
 
     const fallbackRequest: SearchRequest = {
       ...request,
@@ -416,49 +459,55 @@ export async function searchIMEIs(
     }
 
     const broadScanned = await searchBroad(fallbackRequest, ctx, onProgress, onMatches, 90)
-    return buildResult(matches, request.imeis, foundIMEIs, startTime, totalScanned + broadScanned, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
+    return buildResult(ctx, request.imeis, totalScanned + broadScanned, onProgress)
   }
 
   // Standard broad scan (no hints available)
+  if (request.smartSearch) {
+    ctx.logger.warn('Smart Search requested but no hints available — running full broad scan')
+  }
   const scanned = await searchBroad(request, ctx, onProgress, onMatches)
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, scanned, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
+  return buildResult(ctx, request.imeis, scanned, onProgress)
 }
 
-function buildResult(
-  matches: SearchMatch[],
+async function buildResult(
+  ctx: SearchContext,
   allImeis: string[],
-  foundIMEIs: Set<string>,
-  startTime: number,
   foldersScanned: number,
-  scanErrors: number,
-  token: CancelToken,
-  onProgress: (progress: SearchProgress) => void,
-  scanErrorDetails: string[] = [],
-  scanIndexFiltered: number = 0
-): SearchResult {
-  const missingIMEIs = allImeis.filter((imei) => !foundIMEIs.has(imei))
-  const elapsedMs = Date.now() - startTime
+  onProgress: (progress: SearchProgress) => void
+): Promise<SearchResult> {
+  const missingIMEIs = allImeis.filter((imei) => !ctx.foundIMEIs.has(imei))
+  const elapsedMs = Date.now() - ctx.startTime
 
   onProgress({
-    phase: token.cancelled ? 'cancelled' : 'complete',
+    phase: ctx.token.cancelled ? 'cancelled' : 'complete',
     percent: 100,
     currentMachine: '',
     currentDate: '',
-    matchesSoFar: matches.length,
+    matchesSoFar: ctx.matches.length,
     foldersScanned,
     totalFolders: foldersScanned
   })
 
+  if (ctx.scanErrorDetails.length > 0) {
+    ctx.logger.warn(`Scan errors (${ctx.scanErrors}):`)
+    for (const d of ctx.scanErrorDetails.slice(0, 50)) ctx.logger.warn(`  ${d}`)
+  }
+  ctx.logger.info('===== SEARCH COMPLETE =====')
+  ctx.logger.info(`Matches: ${ctx.matches.length}   Missing: ${missingIMEIs.length}   FoldersScanned: ${foldersScanned}   ScanErrors: ${ctx.scanErrors}   Elapsed: ${elapsedMs}ms   Status: ${ctx.token.cancelled ? 'cancelled' : 'complete'}`)
+  const logPath = ctx.logger.getLogPath()
+  await ctx.logger.close()
+
   return {
-    matches,
+    matches: ctx.matches,
     missingIMEIs,
     totalSearched: foldersScanned,
-    scanErrors,
+    scanErrors: ctx.scanErrors,
     elapsedMs,
-    // TODO: Add scanErrorDetails: string[] and scanIndexFiltered: number to SearchResult in types.ts
-    ...(scanErrorDetails.length > 0 ? { scanErrorDetails } : {}),
-    ...(scanIndexFiltered > 0 ? { scanIndexFiltered } : {})
-  } as SearchResult
+    logPath,
+    ...(ctx.scanErrorDetails.length > 0 ? { scanErrorDetails: ctx.scanErrorDetails } : {}),
+    ...(ctx.scanIndexFiltered > 0 ? { scanIndexFiltered: ctx.scanIndexFiltered } : {})
+  }
 }
 
 function parseIMEIFolder(name: string): { imei: string; scanIndex: number } | null {
@@ -504,74 +553,33 @@ function extractMRImei(fileName: string): string | null {
 // ── MR (Model Recognition) search ──────────────────────────────────
 // Searches ModelRecogImages/{date}/{Brand-Model|Error-Error}/ for .png
 // files named SG-{machine}-{code}-{IMEI}-{brand}-{model}.png.
-// The IMEI is extracted from the 4th hyphen-delimited segment.
+//
+// Enabling EITHER MR PASS or MR FAIL turns on MR collection, and the search
+// then ALWAYS scans both PASS (Brand-Model) and FAIL (Error-Error) locations
+// for the audit IMEIs — "Wrong Color" (or any grade) is only knowable from the
+// audit list, never from the NAS, so the loaded list IS the filter and you
+// can't miss images by choosing the "wrong" toggle. Each result is tagged
+// mr-pass / mr-fail by where it was found. Unfound IMEIs get a broader
+// per-machine MR scan before being declared missing.
 
-async function searchMRImages(
-  request: SearchRequest,
-  onProgress: (progress: SearchProgress) => void,
-  onMatches: (matches: SearchMatch[]) => void
-): Promise<SearchResult> {
-  const ctx = createSearchContext(request.imeis)
-  const { token, imeiSet, matches, foundIMEIs, startTime } = ctx
+interface MRScanOpts {
+  includePass: boolean
+  includeFail: boolean
+  /** When true, skip IMEIs already found (used by the fallback to avoid duplicates). */
+  skipFound: boolean
+}
 
-  // Smart Search for MR: if hints have machine + date, go directly to
-  // Machine/ModelRecogImages/Date/ instead of discovering all date folders
-  const dateFolders: DateFolder[] = []
-
-  if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
-    const selectedSet = new Set(request.selectedFolders)
-    const addedPaths = new Set<string>()
-
-    for (const imei of request.imeis) {
-      const hint = request.hints[imei]
-      if (!hint?.machine || !hint?.date) continue
-      if (!selectedSet.has(hint.machine)) continue
-      if (!isDateInRange(hint.date, request)) continue
-
-      const key = `${hint.machine}/${hint.date}`
-      if (addedPaths.has(key)) continue
-      addedPaths.add(key)
-
-      dateFolders.push({
-        machine: hint.machine,
-        datePath: join(request.rootPath, hint.machine, 'ModelRecogImages', hint.date),
-        dateStr: hint.date
-      })
-    }
-  }
-
-  // If no targeted MR folders, fall back to full discovery
-  if (dateFolders.length === 0) {
-    await pooled(request.selectedFolders, CONCURRENCY, token, async (folderName) => {
-      if (token.cancelled) return
-      const mrPath = join(request.rootPath, folderName, 'ModelRecogImages')
-
-      try {
-        const entries = await readdirWithTimeout(mrPath, { withFileTypes: true })
-
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue
-          if (!DATE_FOLDER_REGEX.test(entry.name)) continue
-          if (!isDateInRange(entry.name, request)) continue
-
-          dateFolders.push({
-            machine: folderName,
-            datePath: join(mrPath, entry.name),
-            dateStr: entry.name
-          })
-        }
-      } catch {
-        // H6: MR folder errors were silently swallowed — now counted
-        ctx.scanErrors++
-      }
-    })
-  }
-
-  if (token.cancelled) return buildResult(matches, request.imeis, foundIMEIs, startTime, 0, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
-
-  const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
-
-  // Phase 2: Scan date folders for Brand-Model / Error-Error subfolders
+/** Scan a set of ModelRecogImages date folders for matching .png files. */
+async function scanMRDateFolders(
+  dateFolders: DateFolder[],
+  ctx: SearchContext,
+  imeiSet: Set<string>,
+  opts: MRScanOpts,
+  onMatches: (matches: SearchMatch[]) => void,
+  sendProgress: (machine: string, dateStr: string) => void,
+  foldersScanned: { value: number }
+): Promise<void> {
+  const { token } = ctx
   await pooled(dateFolders, CONCURRENCY, token, async ({ machine, datePath, dateStr }) => {
     if (token.cancelled) return
     sendProgress(machine, dateStr)
@@ -585,9 +593,9 @@ async function searchMRImages(
 
         const isErrorFolder = sub.name.toLowerCase() === MR_FAIL_FOLDER
 
-        // Only scan folders matching the active toggles
-        if (isErrorFolder && !request.mrFail) continue
-        if (!isErrorFolder && !request.mrPass) continue
+        // Keep only the result types the toggles asked for
+        if (isErrorFolder && !opts.includeFail) continue
+        if (!isErrorFolder && !opts.includePass) continue
 
         const subPath = join(datePath, sub.name)
 
@@ -602,6 +610,7 @@ async function searchMRImages(
             const imeiFromFile = extractMRImei(file.name)
             if (!imeiFromFile) continue
             if (!imeiSet.has(imeiFromFile)) continue
+            if (opts.skipFound && ctx.foundIMEIs.has(imeiFromFile)) continue
 
             const match: SearchMatch = {
               imei: imeiFromFile,
@@ -615,30 +624,171 @@ async function searchMRImages(
               otherCount: 1,
               totalFiles: 1,
               matchType: isErrorFolder ? 'mr-fail' : 'mr-pass',
-              mrFolder: sub.name
+              mrFolder: sub.name,
+              modelName: extractModelFromMRFilename(file.name) ?? undefined
             }
-            matches.push(match)
+            ctx.matches.push(match)
             batch.push(match)
-            foundIMEIs.add(imeiFromFile)
+            ctx.foundIMEIs.add(imeiFromFile)
           }
 
           if (batch.length > 0) onMatches(batch)
         } catch (err) {
           // Subfolder not accessible
-          ctx.scanErrors++
-          ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}/${sub.name}: ${errorMessage(err)}`)
+          if (!isBenignDirError(err)) {
+            ctx.scanErrors++
+            ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}/${sub.name}: ${errorMessage(err)}`)
+          }
         }
       }
     } catch (err) {
-      // Date folder not accessible
-      ctx.scanErrors++
-      ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}: ${errorMessage(err)}`)
+      // Date folder not accessible (or speculative ±1-day folder that doesn't exist)
+      if (!isBenignDirError(err)) {
+        ctx.scanErrors++
+        ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}: ${errorMessage(err)}`)
+      }
     }
 
     foldersScanned.value++
   })
+}
 
-  return buildResult(matches, request.imeis, foundIMEIs, startTime, foldersScanned.value, ctx.scanErrors, token, onProgress, ctx.scanErrorDetails, ctx.scanIndexFiltered)
+/** Discover ModelRecogImages date folders under the given machines (within range). */
+async function discoverMRDateFolders(
+  machines: string[],
+  request: SearchRequest,
+  ctx: SearchContext
+): Promise<DateFolder[]> {
+  const dateFolders: DateFolder[] = []
+  await pooled(machines, CONCURRENCY, ctx.token, async (machine) => {
+    if (ctx.token.cancelled) return
+    const mrPath = join(request.rootPath, machine, 'ModelRecogImages')
+    try {
+      const entries = await readdirWithTimeout(mrPath, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        if (!DATE_FOLDER_REGEX.test(entry.name)) continue
+        if (!isDateInRange(entry.name, request)) continue
+        dateFolders.push({
+          machine,
+          datePath: join(mrPath, entry.name),
+          dateStr: entry.name
+        })
+      }
+    } catch (err) {
+      if (!isBenignDirError(err)) {
+        ctx.scanErrors++
+        ctx.scanErrorDetails.push(`MR ${machine}/ModelRecogImages: ${errorMessage(err)}`)
+      }
+    }
+  })
+  return dateFolders
+}
+
+async function searchMRImages(
+  request: SearchRequest,
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void,
+  logsDir?: string
+): Promise<SearchResult> {
+  const ctx = await createSearchContext(request.imeis, logsDir)
+  const { token, imeiSet, matches, foundIMEIs, logger } = ctx
+
+  logSearchHeader(logger, request, 'MR')
+
+  // MR mode collects every listed IMEI's image regardless of how it was graded.
+  // "Wrong Color" (and any other grade) is only knowable from the audit list,
+  // never from the NAS folder structure — so once MR collection is enabled
+  // (either toggle), we always scan BOTH the recognized-model (PASS) folders
+  // and Error-Error (FAIL). Results are tagged mr-pass / mr-fail for the UI.
+  const includePass = true
+  const includeFail = true
+
+  // Smart Search for MR: if hints have machine + date, go directly to
+  // Machine/ModelRecogImages/{date ±1 day}/ instead of discovering all folders.
+  // ±1 day catches devices tested near midnight whose folder rolls to the next day.
+  let usedTargeted = false
+  const dateFolders: DateFolder[] = []
+
+  if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
+    usedTargeted = true
+    const selectedSet = new Set(request.selectedFolders)
+    const addedPaths = new Set<string>()
+    let droppedMachine = 0
+    let droppedDate = 0
+    let droppedNoHint = 0
+
+    for (const imei of request.imeis) {
+      const hint = request.hints[imei]
+      if (!hint?.machine || !hint?.date) { droppedNoHint++; continue }
+      if (!selectedSet.has(hint.machine)) { droppedMachine++; continue }
+
+      let anyDay = false
+      for (const day of expandDateRange(hint.date)) {
+        if (!isDateInRange(day, request)) continue
+        anyDay = true
+        const key = `${hint.machine}/${day}`
+        if (addedPaths.has(key)) continue
+        addedPaths.add(key)
+        dateFolders.push({
+          machine: hint.machine,
+          datePath: join(request.rootPath, hint.machine, 'ModelRecogImages', day),
+          dateStr: day
+        })
+      }
+      if (!anyDay) droppedDate++
+    }
+    logger.info(`MR path: targeted   dateFolders=${dateFolders.length} (incl. ±1 day)   dropped(machineNotSelected=${droppedMachine}, dateOutOfRange=${droppedDate}, noHint=${droppedNoHint})`)
+  }
+
+  // If no targeted MR folders, fall back to full discovery
+  if (dateFolders.length === 0) {
+    usedTargeted = false
+    const discovered = await discoverMRDateFolders(request.selectedFolders, request, ctx)
+    dateFolders.push(...discovered)
+    logger.info(`MR path: full discovery   dateFolders=${dateFolders.length}`)
+  }
+
+  if (token.cancelled) return buildResult(ctx, request.imeis, 0, onProgress)
+
+  const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
+
+  // Phase 2: scan both PASS and Error-Error subfolders for the audit IMEIs
+  await scanMRDateFolders(
+    dateFolders, ctx, imeiSet,
+    { includePass, includeFail, skipFound: false },
+    onMatches, sendProgress, foldersScanned
+  )
+
+  // Fallback: IMEIs not found in their targeted folders → broader per-machine MR scan.
+  // Mirrors the standard search's machine-only/broad fallbacks (searchBroad).
+  if (!token.cancelled && usedTargeted) {
+    const mrFallbackImeis = request.imeis.filter((i) => !foundIMEIs.has(i))
+    if (mrFallbackImeis.length > 0) {
+      // Limit to the machines those IMEIs were hinted to (or all selected if unknown)
+      const fbMachines = new Set<string>()
+      for (const imei of mrFallbackImeis) {
+        const m = request.hints?.[imei]?.machine
+        if (m && request.selectedFolders.includes(m)) fbMachines.add(m)
+      }
+      const machinesToScan = fbMachines.size > 0 ? [...fbMachines] : request.selectedFolders
+      logger.info(`MR fallback: ${mrFallbackImeis.length} IMEIs not in targeted folders -> broad MR scan of ${machinesToScan.length} machine(s)`)
+
+      const fbDateFolders = await discoverMRDateFolders(machinesToScan, request, ctx)
+      if (!token.cancelled && fbDateFolders.length > 0) {
+        const fbImeiSet = new Set(mrFallbackImeis)
+        const fbTracker = createProgressTracker(fbDateFolders, matches, onProgress)
+        await scanMRDateFolders(
+          fbDateFolders, ctx, fbImeiSet,
+          { includePass, includeFail, skipFound: true },
+          onMatches, fbTracker.sendProgress, fbTracker.foldersScanned
+        )
+        foldersScanned.value += fbDateFolders.length
+      }
+    }
+  }
+
+  return buildResult(ctx, request.imeis, foldersScanned.value, onProgress)
 }
 
 interface FileCountResult {

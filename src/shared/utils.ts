@@ -16,6 +16,29 @@ export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
+/**
+ * Add `delta` days to a YYYYMMDD string, returning a YYYYMMDD string.
+ * Uses UTC math so it never drifts across month/year boundaries or DST.
+ * Returns the input unchanged if it isn't a parseable date.
+ */
+export function addDaysToYMD(yyyymmdd: string, delta: number): string {
+  const y = parseInt(yyyymmdd.substring(0, 4), 10)
+  const m = parseInt(yyyymmdd.substring(4, 6), 10)
+  const d = parseInt(yyyymmdd.substring(6, 8), 10)
+  if (Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) return yyyymmdd
+  const ms = Date.UTC(y, m - 1, d) + delta * 86_400_000
+  const dt = new Date(ms)
+  const yy = dt.getUTCFullYear()
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  return `${yy}${mm}${dd}`
+}
+
+/** Expand a YYYYMMDD date into [previousDay, day, nextDay] — catches midnight folder rollovers. */
+export function expandDateRange(yyyymmdd: string): string[] {
+  return [addDaysToYMD(yyyymmdd, -1), yyyymmdd, addDaysToYMD(yyyymmdd, 1)]
+}
+
 /** Format milliseconds into a human-readable elapsed time string. */
 export function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`

@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.4.0 — hardened release.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.0 — MR reliability & diagnostics.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -35,7 +35,7 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 | **Search history** | Last 5 searches stored with full parameter and result summaries |
 | **Date range filter** | Restrict searches to a specific date window (YYYYMMDD folder names) |
 | **Scan index filter** | Filter by scan index number (`_1`, `_2`, `_3`, etc.) |
-| **Export logging** | Detailed per-file logs with file sizes and throughput; keeps 3 most recent logs |
+| **Search & export logging** | Diagnostic search logs (path decision, per-machine counts, fallbacks) plus detailed per-file export logs; keeps 3 most recent of each |
 | **Missing IMEI report** | View and save the list of audit IMEIs not found on the NAS |
 | **Dark / Light theme** | Liquid Glass theming in both variants; persists across sessions |
 | **Trilingual** | English, Traditional Chinese, and Simplified Chinese — cycle with the language button in the Source panel |
@@ -156,6 +156,8 @@ If your audit data only contains IMEIs (no Machine or Date columns), the tool fa
 
 **IMEI validation**: exactly 15 numeric digits. Invalid entries and duplicates are counted and reported.
 
+> **OneDrive files:** If your audit file lives in a OneDrive folder that's set to "online-only", the first read can stall while OneDrive downloads it. The tool now times out after 20 seconds and shows a clear message instead of hanging. To avoid it entirely, right-click the file in File Explorer → **Always keep on this device** (wait for the green check), or keep audit files in a plain local folder.
+
 ---
 
 ## Settings Reference
@@ -190,6 +192,7 @@ Controls how exported folders are arranged at the destination:
 | **Date > Machine** | Two-level: date then machine | `dest/20260515/M8/350002267153742_192/` |
 | **By IMEI** | Groups all instances of the same device | `dest/350002267153742/M8_20260515_192/` |
 | **By Model** | Groups by device model (parsed from MR image) | `dest/Apple-iPhone13Pro/350002267153742_192/` |
+| **Machine > Model** | Two-level: machine then device model | `dest/M8/Apple-iPhone13Pro/350002267153742_192/` |
 
 For **MR image exports**, each IMEI gets its own folder containing the matched `.png` file(s):
 
@@ -199,6 +202,7 @@ For **MR image exports**, each IMEI gets its own folder containing the matched `
 | Machine > Date | `dest/M8/20260515/350002267153742/Samsung-Galaxy_S24.png` |
 | By IMEI | `dest/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
 | By Model | `dest/Samsung-Galaxy_S24/350002267153742/M8_20260515_Samsung-Galaxy_S24.png` |
+| Machine > Model | `dest/M8/Samsung-Galaxy_S24/350002267153742/20260515_Samsung-Galaxy_S24.png` |
 
 > **Always included:** Every export automatically includes the `DefectLog.xml` and MR image (`SG-*.png`) from each IMEI folder, regardless of the Image Type filter setting. These files are critical for audit and model identification.
 
@@ -218,24 +222,22 @@ For **MR image exports**, each IMEI gets its own folder containing the matched `
 | **All** (default) | Include every scan index (`_1`, `_2`, `_3`, etc.). |
 | **First only** | Only `_1` entries — the first scan in the series for that device on that machine/date. |
 
-### MR PASS
+### MR PASS / MR FAIL — Model Recognition image collection
 
-Collects **Model Recognition PASS** images — devices the AI correctly identified.
+These two toggles collect **Model Recognition (MR) images** for the IMEIs in your audit list. They are the right choice when your audit file is a list of devices flagged by the grading system (e.g. a "Wrong Color" report) and you need each device's MR capture.
 
-- Searches `Machine/ModelRecogImages/{date}/{Brand-Model}/` folders.
-- Matches `.png` files whose filename contains a 15-digit IMEI from the audit list (format: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`).
-- Results show the Brand-Model folder name (e.g. `Apple-iPhone8`) in green in the results table.
-- **Disables standard image collection** when enabled.
+**Turning on either MR PASS or MR FAIL enables MR collection.** Because a device's *grade* (wrong color, etc.) is only knowable from your audit file — never from the NAS folder structure — the search **always checks both locations** for every listed IMEI:
 
-### MR FAIL
+- `Machine/ModelRecogImages/{date}/{Brand-Model}/` — the recognized-model (PASS) folders
+- `Machine/ModelRecogImages/{date}/Error-Error/` — the misidentified (FAIL) folder
 
-Collects **Model Recognition FAIL** images — devices the AI misidentified.
+It matches `.png` files whose filename contains a 15-digit IMEI from the audit list (format: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`). Every listed device's image comes back regardless of grade — **you cannot miss images by picking the "wrong" toggle.**
 
-- Searches `Machine/ModelRecogImages/{date}/Error-Error/` folders.
-- Same matching logic as MR PASS.
-- Results show `Error-Error` in red in the results table.
+- Results are **tagged by where each image was found**: the Brand-Model folder name (e.g. `Apple-iPhone8`) in green for PASS, `Error-Error` in red for FAIL.
+- **MR collection replaces standard image collection** while enabled.
+- If a device isn't in its expected date folder, a **broader per-machine MR scan** runs automatically before it's reported missing (catches midnight rollovers and folder mismatches).
 
-> Both MR PASS and MR FAIL can be enabled simultaneously. The search combines results from both Brand-Model and Error-Error subfolders.
+> The audit list itself is the filter — there is no "wrong color" toggle, because the search cannot detect grade. Load the list, enable MR, and every device's image is collected.
 
 ### AI Images Only
 
@@ -272,22 +274,25 @@ If folders were inaccessible during a search, the status bar shows the count (e.
 
 ---
 
-## Export Logging
+## Logging
 
-Every export generates a detailed log file in the app's user data directory:
+Both searches and exports write detailed diagnostic logs to the app's user data directory:
 
 ```
-%APPDATA%/Image Collection v2/logs/export-YYYYMMDD-HHmmss.log
+%APPDATA%/Image Collection v2/logs/search-YYYYMMDD-HHmmss-mmm.log
+%APPDATA%/Image Collection v2/logs/export-YYYYMMDD-HHmmss-mmm.log
 ```
 
-Each log includes:
-- **Header** — timestamp, destination, all settings, concurrency config.
-- **Per-folder entries** — source path, destination path, each file copied with size, elapsed time.
-- **Summary** — total files and bytes copied, throughput (MB/s), skipped/failed counts.
+**Search logs** record exactly what the search did — invaluable when a search returns fewer results than expected:
+- **Header** — mode (standard vs MR), IMEI count, hint count, Smart Search on/off, MR PASS/FAIL, scan-index filter, date range, selected folders, NAS root.
+- **Path decision** — whether the search ran targeted (direct folder lookups) or full discovery, the number of date folders built, per-machine counts, and how many IMEIs fell to each fallback (and why).
+- **Summary** — matches found, missing, folders scanned, scan errors, elapsed time.
 
-The tool keeps the **3 most recent** log files and rotates older ones automatically.
+**Export logs** record per-folder source→destination paths, each file copied with size, throughput, and skipped/failed counts.
 
-Click **View Log** in the status bar after an export to open the logs folder.
+The tool keeps the **3 most recent** logs of each type and rotates older ones automatically (search and export rotate independently).
+
+Click **View Log** in the status bar to open the most recent search log after a search, or the logs folder otherwise.
 
 ---
 
@@ -357,6 +362,29 @@ NAS_ROOT/                              (e.g. Z:\)
 ---
 
 ## Version History
+
+### v1.5.0 — MR Reliability & Diagnostics (2026-06-10)
+
+Driven by a real "Wrong Color" collection that returned 0 of 397 images. Root causes found and fixed:
+
+**MR collection rework:**
+- Enabling **either** MR PASS or MR FAIL now scans **both** the recognized-model folders **and** Error-Error, returning every audit IMEI's image regardless of grade. "Wrong color" is only knowable from the audit list, never the NAS — so the list is the filter, and you can no longer miss images by choosing the "wrong" toggle.
+- Results are tagged PASS (green) / FAIL (red) by where each image was found.
+- **MR fallback** — IMEIs not found in their targeted date folder now get a broader per-machine MR scan before being declared missing (mirrors the standard search's fallback architecture, which MR previously lacked).
+
+**Date handling:**
+- Auto-populated **End Date is now the last test date + 1 day**, and MR lookups also check ±1 day, so devices tested near midnight (image folder rolls to the next day) are no longer missed.
+- Missing/non-existent speculative folders are treated as benign and no longer counted as scan errors.
+
+**Diagnostics:**
+- **Searches are now logged** (`search-*.log`) with the full request, the targeted-vs-discovery path decision, per-machine folder counts, fallback transitions, and a result summary. **View Log** opens the search log after a search.
+
+**Reliability:**
+- **Stale-state fix** — the date range is read from committed state at search time, and machine auto-select is content-keyed. Changing a setting/toggle no longer requires re-uploading the audit file for the search to work.
+- **OneDrive-safe audit read** — 20s timeout with a clear "still downloading" message instead of an indefinite hang.
+
+**New:**
+- **Machine → Model** organization mode (`dest/M8/Apple-iPhone13Pro/IMEI_index/`). MR matches now carry a parsed model name.
 
 ### v1.4.0 — Hardened Release (2026-05-28)
 

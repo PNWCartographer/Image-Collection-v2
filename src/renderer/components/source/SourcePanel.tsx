@@ -162,13 +162,15 @@ export default function SourcePanel({ lang, onToggleLang, onFoldersChange, onDat
   }, [suggestedDateRange])
 
   // ── Auto-select machine folders from Smart Search hints ──
-  const appliedMachinesRef = useRef<string[] | null>(null)
+  const appliedMachinesRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!suggestedMachines || suggestedMachines.length === 0 || folders.length === 0) return
-    // Only apply once per new set of hints (don't re-apply on folder refresh)
-    if (appliedMachinesRef.current === suggestedMachines) return
-    appliedMachinesRef.current = suggestedMachines
+    // Apply once per distinct set of hinted machines, keyed by content (not array
+    // identity) so it's deterministic across memo-identity churn and folder refreshes.
+    const key = [...suggestedMachines].sort().join('|')
+    if (appliedMachinesRef.current === key) return
+    appliedMachinesRef.current = key
 
     const machineSet = new Set(suggestedMachines)
     const newToggles: Record<string, boolean> = {}

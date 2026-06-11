@@ -94,6 +94,8 @@ export interface SearchResult {
   /** Number of scan-index entries removed by the first_only filter. */
   scanIndexFiltered?: number
   elapsedMs: number
+  /** Path to the diagnostic log written for this search ('' if logging unavailable). */
+  logPath: string
 }
 
 export interface ExportRequest {
@@ -101,7 +103,7 @@ export interface ExportRequest {
   destination: string
   action: 'copy' | 'move'
   imageType: 'both' | 'bmp' | 'jpeg'
-  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei' | 'by-model'
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei' | 'by-model' | 'machine-model'
   duplicates: 'skip' | 'overwrite'
   aiImages: boolean
 }

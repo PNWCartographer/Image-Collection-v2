@@ -5,6 +5,23 @@ import { basename, extname } from 'path'
 import type { AuditParseResult, AuditHint, HintDetectionMeta } from '../../shared/types'
 import { IMEI_REGEX, DATE_FOLDER_REGEX } from '../../shared/utils'
 
+/** Max time to wait for a file read before assuming OneDrive is still hydrating it. */
+const READFILE_TIMEOUT_MS = 20_000
+
+/**
+ * Read a file with a timeout. OneDrive "Files On-Demand" placeholders can block
+ * the read indefinitely while the file downloads; surface a clear, retryable
+ * error (AUDIT_FILE_DOWNLOADING) instead of hanging the parse forever.
+ */
+function withReadTimeout<T>(read: Promise<T>): Promise<T> {
+  return Promise.race([
+    read,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('AUDIT_FILE_DOWNLOADING')), READFILE_TIMEOUT_MS)
+    )
+  ])
+}
+
 // ── Format detection ───────────────────────────────────────────────
 
 function detectFormat(filePath: string): AuditParseResult['format'] {
@@ -350,7 +367,7 @@ interface ParsedRows {
 }
 
 async function parseCSV(filePath: string): Promise<ParsedRows> {
-  const content = await readFile(filePath, 'utf-8')
+  const content = await withReadTimeout(readFile(filePath, 'utf-8'))
 
   let records: string[][]
   try {
@@ -375,7 +392,7 @@ async function parseCSV(filePath: string): Promise<ParsedRows> {
 }
 
 async function parseExcel(filePath: string): Promise<ParsedRows> {
-  const buffer = await readFile(filePath)
+  const buffer = await withReadTimeout(readFile(filePath))
   const workbook = XLSX.read(buffer, { type: 'buffer' })
   const sheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[sheetName]
@@ -395,7 +412,7 @@ async function parseExcel(filePath: string): Promise<ParsedRows> {
 }
 
 async function parseTXT(filePath: string): Promise<ParsedRows> {
-  const content = await readFile(filePath, 'utf-8')
+  const content = await withReadTimeout(readFile(filePath, 'utf-8'))
   const lines = content
     .split(/\r?\n/)
     .map((line) => line.trim())

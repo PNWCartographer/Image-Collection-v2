@@ -33,6 +33,8 @@ The tool accepts audit files containing 15-digit IMEI device numbers.
 - File browser dialog (button click)
 - Drag-and-drop onto the Audit List panel
 
+**OneDrive-safe read:** the audit-file read uses a 20-second timeout. If the file is a OneDrive "Files On-Demand" placeholder that hasn't finished downloading, the parse fails fast with a clear, retryable message ("file still downloading — right-click → Always keep on this device") instead of hanging.
+
 **Post-Import Display:**
 - Detected file format
 - Total valid IMEIs loaded
@@ -77,6 +79,8 @@ The tool accepts audit files containing 15-digit IMEI device numbers.
 - Parallel scanning across machine folders (concurrent directory reads)
 - Progress reporting via IPC: percentage complete, currently scanning folder
 - Cancelable: user can abort a search in progress
+
+**Diagnostics:** every search writes a rotating `search-<timestamp>.log` (see §2.10) capturing the search parameters, the path taken (targeted vs full-discovery), per-machine counts, fallbacks, scan errors, and a final summary.
 
 **Filters (applied during search):**
 
@@ -124,16 +128,19 @@ After search completes, results are displayed **before export** so the user can 
 
 MR images are collected from a **separate directory tree** (`ModelRecogImages/`) under each machine folder, not from the standard IMEI_Index folders. The system sorts MR images by AI recognition result: correctly identified devices go into `{Brand}-{Model}` folders (PASS), while misidentified devices go into `Error-Error` (FAIL).
 
-| Toggle | Default | Search Path | Behavior |
-|--------|---------|-------------|----------|
-| MR PASS | OFF | `{machine}/ModelRecogImages/{date}/{Brand-Model}/` | Collects MR `.png` images from brand-model folders where AI correctly identified the device |
-| MR FAIL | OFF | `{machine}/ModelRecogImages/{date}/Error-Error/` | Collects MR `.png` images where AI failed (wrong placement, wrong color, wrong model, MR fail) |
+A device's grade (e.g. "Wrong Color") is recorded **only in the audit file**, never in the folder structure — a wrong-color device's MR image still sits in its normal recognized-model (PASS) folder. Because the folder structure cannot tell PASS from FAIL grades, the two toggles do **not** narrow the search path. Instead, enabling **either** toggle activates MR mode and **always scans both** the Brand-Model (PASS) folders and `Error-Error` (FAIL). The audit list is the filter: every listed IMEI's image is returned regardless of grade, then tagged by where it was found.
+
+| Toggle | Default | Activates | Result Tag |
+|--------|---------|-----------|------------|
+| MR PASS | OFF | MR mode (scans both PASS + Error-Error) | Images found in a Brand-Model folder are tagged **PASS** (green) |
+| MR FAIL | OFF | MR mode (scans both PASS + Error-Error) | Images found in `Error-Error` are tagged **FAIL** (red) |
 
 **MR toggle rules:**
 - When **both MR toggles are OFF**: normal image collection from IMEI_Index folders per Image Type setting (JPEG/BMP/Both)
-- When **either MR toggle is ON**: tool searches `ModelRecogImages/` instead of the standard date→IMEI_Index path. Standard scan images are excluded
-- When **both MR toggles are ON**: tool collects from both brand-model folders AND Error-Error
+- When **either toggle is ON** (PASS, FAIL, or both): tool searches `ModelRecogImages/` instead of the standard date→IMEI_Index path and always scans **both** the Brand-Model folders and `Error-Error`. Standard scan images are excluded. There is intentionally **no "wrong color" toggle** — the audit list determines which IMEIs are collected, and tagging is by folder location
 - MR mode does not bypass IMEI matching — the IMEI is extracted from the `.png` filename (4th segment when split on `-`) and matched against the audit list
+- **Fallback**: IMEIs not found in their targeted `ModelRecogImages/{date}/` folder get a broader per-machine MR scan (the machine's actual date folders within range, both PASS and Error-Error) before being declared missing — mirroring the standard search's fallback
+- **±1-day handling**: targeted MR lookups also check the day before/after each hinted date (a device tested near midnight can land in the next day's folder); the auto-populated End Date is set to max(test date) + 1 day
 - MR image filename pattern: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`
 - PASS folder detection: any folder under a date folder within ModelRecogImages that is NOT named `Error-Error`
 - FAIL folder detection: exact folder name `Error-Error`
@@ -153,8 +160,11 @@ MR images are collected from a **separate directory tree** (`ModelRecogImages/`)
 | By Date | `dest/20260515/IMEI_index/` | Group by scan date |
 | Machine → Date | `dest/M8/20260515/IMEI_index/` | 2-level: machine then date |
 | Date → Machine | `dest/20260515/M8/IMEI_index/` | 2-level: date then machine |
+| Machine → Model | `dest/M8/Apple-iPhone13Pro/IMEI_index/` | 2-level: machine then device model (parsed from MR `.png` filename) |
 | By IMEI | `dest/350002267153742/M8_20260515_192/` | Group all instances of same device |
 | By Scan Index | `dest/scan_1/IMEI_index/`, `dest/scan_2/IMEI_index/` | Group by scan index number |
+
+> **Machine → Model in MR mode**: when an MR toggle is active, each match is a single `.png` and the layout becomes `dest/{machine}/<Model|Error-Error>/{IMEI}/<date>_<tag>.png`. The model level is the parsed device model for PASS images and `Error-Error` for FAIL images.
 
 **Progress:**
 - Progress bar with percentage and current operation
@@ -217,6 +227,20 @@ Save and switch between multiple shared folder roots for different NAS shares, R
 - Store the **last 5 searches** with: audit file path, selected source and folders, date range filter, scan index filter, result summary (found/missing counts)
 - Accessible from a dropdown or sidebar in the UI
 - One-click re-run: reloads the audit file (if still accessible) and re-applies all search settings
+
+### 2.10 Diagnostic Logging
+
+Both searches and exports write rotating diagnostic logs to `%APPDATA%/Image Collection v2/logs/`. Each log family keeps its **3 most recent** files (search and export logs rotate independently).
+
+**Search log** (`search-<timestamp>.log`, written on every search) records:
+- Search mode (standard vs MR), IMEI count, hint count, SmartSearch flag, MR PASS/FAIL flags, scan-index filter, date range, selected folders, root path
+- The path taken (targeted vs full-discovery) with per-machine folder counts and drop-reason counters
+- Fallback transitions and any scan errors
+- A final summary: matches, missing, foldersScanned, scanErrors, elapsed
+
+**Export log** (`export-<timestamp>.log`) records the export settings header, per-file entries, and a throughput summary.
+
+The status-bar **"View Log"** link opens the specific search log once a search has completed (falling back to opening the logs folder otherwise).
 
 ---
 

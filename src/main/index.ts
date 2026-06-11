@@ -126,6 +126,8 @@ function createWindow(): void {
 }
 
 function registerIPC(): void {
+  const logsDir = join(app.getPath('userData'), 'logs')
+
   ipcMain.handle('dialog:open-folder', async () => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -162,15 +164,14 @@ function registerIPC(): void {
       },
       (matches) => {
         mainWindow?.webContents.send('search:matches', matches)
-      }
+      },
+      logsDir
     )
   })
 
   ipcMain.on('search:cancel', () => {
     cancelSearch()
   })
-
-  const logsDir = join(app.getPath('userData'), 'logs')
 
   ipcMain.handle('export:start', async (_event, request: ExportRequest) => {
     return exportResults(

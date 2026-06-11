@@ -152,6 +152,8 @@ NAS_ROOT (e.g., Z:\ mapped to \\NAS_Lonestar)
 
 The `ModelRecogImages/` folder exists under each machine folder and contains the authoritative, AI-categorized collection of Model Recognition images. This is a **separate search path** from the standard IMEI folder tree — the tool searches here when MR PASS or MR FAIL toggles are active.
 
+> **Important (v1.5):** A device's grade (e.g. "Wrong Color") is recorded **only in the audit file**, never in this folder structure — a wrong-color device's MR image sits in its normal recognized-model (PASS) folder, not `Error-Error`. Because of this, enabling **either** MR PASS or MR FAIL makes the tool scan **both** the Brand-Model (PASS) folders **and** `Error-Error` (FAIL) for every date in range. The audit list is the filter: every listed IMEI's image is returned and then tagged PASS/FAIL by where it was found.
+
 ### Path Structure
 
 ```
@@ -169,6 +171,10 @@ The `ModelRecogImages/` folder exists under each machine folder and contains the
 | 4a | Brand-Model folder (PASS) | `20260515/Apple-iPhone8/` | Any folder name that is NOT `Error-Error` |
 | 4b | Error-Error folder (FAIL) | `20260515/Error-Error/` | Exact name `Error-Error` |
 | 5 | MR image files (`.png`) | `SG-M008-075545-358627090247469-Apple-iPhone8.png` | Same naming pattern as IMEI folder MR images |
+
+### ±1-Day Date Lookup (midnight rollover)
+
+A device tested near midnight can have its `ModelRecogImages` date folder dated the **next day** relative to its audit/test date. To avoid false "missing" results, v1.5 MR targeted lookups also check the **day before and after** each hinted date (the date and its ±1-day neighbors), bounded by the active date-range filter. Speculative neighbor folders that don't exist simply return ENOENT and are ignored — they are **not** counted as scan errors. The auto-populated End Date is likewise set to max(test date) + 1 day so broad and fallback scans still reach a rolled-over folder.
 
 ### MR PASS (Brand-Model Folders)
 
@@ -213,12 +219,14 @@ This IMEI is matched against the audit list to determine which MR images to coll
 
 ### Search Behavior by Toggle
 
+As of v1.5, enabling **either** MR toggle activates MR mode and scans **both** the Brand-Model (PASS) folders and `Error-Error` (FAIL). The toggles no longer narrow the search path — the audit list does. Results are tagged PASS/FAIL by which folder each image was found in.
+
 | MR PASS | MR FAIL | Search Path | Files Collected |
 |---------|---------|-------------|-----------------|
 | OFF | OFF | Standard: `{machine}/{date}/{IMEI_index}/` | Device scan images (.jpg/.bmp) |
-| ON | OFF | `{machine}/ModelRecogImages/{date}/{Brand-Model}/` | MR PASS `.png` files matching audit list |
-| OFF | ON | `{machine}/ModelRecogImages/{date}/Error-Error/` | MR FAIL `.png` files matching audit list |
-| ON | ON | Both paths above | MR PASS + MR FAIL `.png` files matching audit list |
+| ON | OFF | Both `{machine}/ModelRecogImages/{date}/{Brand-Model}/` **and** `.../Error-Error/` | Every audit-list IMEI's MR `.png`, tagged PASS/FAIL by location |
+| OFF | ON | Both `{Brand-Model}/` **and** `Error-Error/` (same as above) | Every audit-list IMEI's MR `.png`, tagged PASS/FAIL by location |
+| ON | ON | Both `{Brand-Model}/` **and** `Error-Error/` (same as above) | Every audit-list IMEI's MR `.png`, tagged PASS/FAIL by location |
 
 ---
 

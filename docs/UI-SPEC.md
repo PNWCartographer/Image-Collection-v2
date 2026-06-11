@@ -348,10 +348,10 @@ Every setting control has a tooltip icon (ⓘ) that displays on hover.
 |---------|-------------|
 | Action | **Move** transfers folders and removes them from the source. **Copy** duplicates folders, leaving the source unchanged. |
 | Image Type | **BMP**: collect .bmp images only. **JPEG**: collect .jpg/.jpeg only. **Both**: collect all image types from matched folders. |
-| Organize | Choose how exported folders are structured. **Flat**: single folder. **By Machine/Date**: one level of grouping. **Machine→Date** or **Date→Machine**: two-level nesting. **By IMEI**: groups all scans of the same device. |
+| Organize | Choose how exported folders are structured. **Flat**: single folder. **By Machine/Date**: one level of grouping. **Machine→Date**, **Date→Machine**, or **Machine→Model**: two-level nesting (Machine→Model groups by the device model parsed from the MR image filename). **By IMEI**: groups all scans of the same device. |
 | Duplicates | **Skip**: if an IMEI folder already exists at the destination, leave it untouched. **Overwrite**: replace existing destination folders with the new source data. |
-| MR PASS | Collects Model Recognition PASS images — devices the AI correctly identified. Searches `ModelRecogImages/{date}/{Brand-Model}/` folders for `.png` files matching audit list IMEIs. Disables standard image collection. |
-| MR FAIL | Collects Model Recognition FAIL images — devices the AI misidentified (wrong placement, wrong color, wrong model). Searches `ModelRecogImages/{date}/Error-Error/` for `.png` files matching audit list IMEIs. |
+| MR PASS | Collects Model Recognition images for every IMEI in your audit list. Searches `ModelRecogImages/` and scans **both** the recognized-model folders and `Error-Error`; results are tagged **PASS** (found in a model folder) or **FAIL** (found in Error-Error). Your audit list is the filter — grade (e.g. wrong color) comes from the audit file, not the folder. Disables standard image collection. |
+| MR FAIL | Same MR collection as MR PASS — enabling either toggle scans **both** the recognized-model folders and `Error-Error`, returning every audit-list IMEI's image tagged PASS/FAIL by where it was found. (There is no separate "wrong color" toggle; the audit list determines what is collected.) |
 | AI Images Only | When enabled, collects only the `FD/` subfolder contents (AI detection images) from matched IMEI folders. Standard scan images at the folder root are excluded. When disabled, standard export includes FD/ as part of the full IMEI folder. |
 | Scan Index | **All**: include every scan index (_1, _2, _3, etc.). **First only**: only _1 entries. |
 | Date Range | Restrict the search to date folders within the specified range. Leave blank to search all dates. |
@@ -389,6 +389,13 @@ Every setting control has a tooltip icon (ⓘ) that displays on hover.
 - Click toggles between dark and light
 - Smooth CSS transition (300ms) on all themed properties
 - System theme detection via `prefers-color-scheme` media query (optional setting)
+
+### 4.5 Status Bar "View Log" Link
+
+- The status bar exposes a **"View Log"** link after a search or export completes
+- After a **search**, the link opens that run's specific `search-<timestamp>.log`; if no search-log path is available it falls back to opening the logs folder
+- After an **export**, it opens the export log / logs folder as before
+- Logs live in `%APPDATA%/Image Collection v2/logs/` (search and export logs each keep the 3 most recent)
 
 ---
 

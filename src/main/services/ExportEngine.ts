@@ -57,6 +57,8 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
       return join(dest, match.imei, `${machine}_${match.date}_${match.scanIndex}`)
     case 'by-model':
       return join(dest, model, folder)
+    case 'machine-model':
+      return join(dest, machine, model, folder)
     default: {
       const _exhaustive: never = organize
       return _exhaustive
@@ -78,21 +80,27 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
  */
 function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
   const mrTag = match.mrFolder || (match.matchType === 'mr-pass' ? 'MR-Pass' : 'MR-Fail')
+  // MR matches always carry a model (parsed from the SG-*.png filename) or fall
+  // back to the source folder name (e.g. the Brand-Model folder, or 'Error-Error').
+  const model = sanitizePathSegment(match.modelName || match.mrFolder || 'Unknown')
+  const machine = sanitizePathSegment(match.machineName)
 
   switch (organize) {
     case 'flat':
     case 'by-imei':
-      return join(dest, match.imei, `${match.machineName}_${match.date}_${mrTag}.png`)
+      return join(dest, match.imei, `${machine}_${match.date}_${mrTag}.png`)
     case 'by-machine':
-      return join(dest, match.machineName, match.imei, `${match.date}_${mrTag}.png`)
+      return join(dest, machine, match.imei, `${match.date}_${mrTag}.png`)
     case 'by-date':
-      return join(dest, match.date, match.imei, `${match.machineName}_${mrTag}.png`)
+      return join(dest, match.date, match.imei, `${machine}_${mrTag}.png`)
     case 'machine-date':
-      return join(dest, match.machineName, match.date, match.imei, `${mrTag}.png`)
+      return join(dest, machine, match.date, match.imei, `${mrTag}.png`)
     case 'date-machine':
-      return join(dest, match.date, match.machineName, match.imei, `${mrTag}.png`)
+      return join(dest, match.date, machine, match.imei, `${mrTag}.png`)
     case 'by-model':
-      return join(dest, match.modelName || 'Unknown', match.imei, `${match.machineName}_${match.date}_${mrTag}.png`)
+      return join(dest, model, match.imei, `${machine}_${match.date}_${mrTag}.png`)
+    case 'machine-model':
+      return join(dest, machine, model, match.imei, `${match.date}_${mrTag}.png`)
     default: {
       const _exhaustive: never = organize
       return _exhaustive

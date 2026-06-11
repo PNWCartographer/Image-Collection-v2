@@ -323,6 +323,24 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 
 ---
 
+## Milestone 15: MR Search Reliability & Diagnostics
+> **Gate**: A search produces a `search-*.log` showing the path decision (targeted vs full-discovery) + per-machine folder counts; MR collection returns every audit IMEI regardless of PASS/FAIL location; toggling a setting does not require re-uploading the audit file
+
+| # | Task | Details |
+|---|------|---------|
+| 15.1 | Search logging | Write a rotating `search-<timestamp>.log` to `%APPDATA%/Image Collection v2/logs/` on every search (keep 3 most recent, separate from export logs). Record search mode (standard/MR), IMEI/hint counts, SmartSearch + MR flags, scan-index filter, date range, selected folders, root path, the path taken (targeted vs full-discovery) with per-machine folder counts and drop-reason counters, fallback transitions, scan errors, and a final summary (matches, missing, foldersScanned, scanErrors, elapsed) |
+| 15.2 | "View Log" opens the search log | Status-bar "View Log" link opens the specific search log when a search has completed; falls back to opening the logs folder otherwise |
+| 15.3 | MR scans both PASS and FAIL | Grade (e.g. "Wrong Color") is knowable only from the audit file, never from folder structure. Enabling **either** MR PASS or MR FAIL activates MR mode and ALWAYS scans both the recognized-model (PASS) folders and `Error-Error` (FAIL), returning every listed IMEI's image. Results are tagged PASS (green) / FAIL (red) by where each image was found. The audit list is the filter — there is intentionally NO "wrong color" toggle |
+| 15.4 | MR fallback | IMEIs not found in their targeted `ModelRecogImages/{hintDate}` folder get a broader per-machine MR scan (discover that machine's actual date folders within range, scan both PASS and Error-Error) before being declared missing — mirroring the standard search's machine-only + broad fallbacks |
+| 15.5 | ±1-day date handling | Devices tested near midnight can land in the next day's folder. Auto-populated End Date is now max(test date) + 1 day. MR targeted lookups also check the day before and after each hinted date (`expandDateRange`), gated by the chosen date range. Missing speculative folders (ENOENT) are benign and not counted as scan errors |
+| 15.6 | OneDrive-safe audit read | Audit-file read has a 20s timeout; an unhydrated OneDrive "Files On-Demand" placeholder fails fast with a clear retryable error ("file still downloading — right-click → Always keep on this device") instead of hanging |
+| 15.7 | Machine → Model organize mode | New `machine-model` mode → `dest/M8/Apple-iPhone13Pro/IMEI_index/` (standard) and `dest/M8/<Model\|Error-Error>/IMEI/<date>_<tag>.png` (MR). Model parsed from the SG-*.png filename; MR matches carry a `modelName`, falling back to the source folder name |
+| 15.8 | Stale-state fix | The date range is read from committed React state at search time (not a ref that could be stale right after auto-populate); machine auto-select is keyed by content. Changing a setting/toggle no longer requires re-uploading the audit file |
+
+**Checkpoint**: Run an MR search → a `search-*.log` is written showing whether the targeted or full-discovery path ran, with per-machine folder counts and the final summary. Load an audit list containing a "Wrong Color" device → its image is returned and tagged (PASS or FAIL) regardless of which folder it sits in. Toggle MR PASS/FAIL or change the date range without re-uploading the audit file → the next search still works. Export with Machine → Model → folders nest as `dest/{machine}/{model}/...`.
+
+---
+
 ## Milestone Dependency Map
 
 ```
@@ -335,6 +353,8 @@ M0 (Scaffold)
            └─► M8 (Multi-Source + History)
                 └─► M9 (Polish)
                      ├─► M10a (MR PASS) ─┬─► M12 (Packaging) ──► M13 (README)
-                     ├─► M10b (MR FAIL) ┘         │
-                     └─► M11 (Pending)             └─► M14 (Auto-Update) [blocked on IT approval]
+                     ├─► M10b (MR FAIL) ┤         │
+                     │                  └─► M15 (MR Reliability & Diagnostics)
+                     ├─► M11 (Pending)             │
+                     └──────────────────► M14 (Auto-Update) [blocked on IT approval]
 ```

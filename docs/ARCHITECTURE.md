@@ -135,6 +135,7 @@ interface SearchMatch {
   totalFiles: number;
   matchType?: 'mr-pass' | 'mr-fail';  // undefined for standard matches
   mrFolder?: string;             // Brand-Model folder or 'Error-Error'
+  modelName?: string;            // Parsed from SG-*.png filename; falls back to source folder name
 }
 
 interface SearchResult {
@@ -170,15 +171,19 @@ interface SearchResult {
 3. Build final result with missing IMEIs list
 
 **Search algorithm — MR mode (MR PASS ON and/or MR FAIL ON):**
-1. Phase 1 — Discover date folders inside `{machine}/ModelRecogImages/` per machine
-2. Phase 2 — For each date folder:
-   - Read Brand-Model and Error-Error subfolders
-   - If MR PASS is ON: scan non-`Error-Error` folders
-   - If MR FAIL is ON: scan `Error-Error/` folder
-   - For each `.png` file, extract IMEI via `extractMRImei()`:
-     - Filename format: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`
-     - Split on `-`, take segment index 3 (4th segment), validate 15 digits
-   - Check IMEI against audit list; if match, record with matchType and mrFolder
+
+Enabling **either** MR PASS or MR FAIL activates MR mode, and MR mode **always scans both** the recognized-model (PASS) folders and `Error-Error` (FAIL). A device's grade (e.g. "Wrong Color") is only knowable from the audit file's grade column — never from the NAS folder structure — and a wrong-color device's MR image sits in the normal PASS folder, not `Error-Error`. So the audit list itself is the filter: every listed IMEI's image is returned regardless of grade, then tagged PASS (green) / FAIL (red) by where it was found. There is intentionally no "wrong color" toggle.
+
+MR mode mirrors the standard search's **targeted → fallback → broad** architecture:
+
+1. **Targeted** (when `smartSearch` + hints with machine + date): go directly to `{machine}/ModelRecogImages/{hintDate}/` and scan both PASS and `Error-Error`. Targeted lookups also probe the day before and after each hinted date via `expandDateRange()` (gated by the chosen date range), since a device tested near midnight can be filed under the next day. Missing/non-existent speculative folders (ENOENT) are treated as benign and not counted as scan errors.
+2. **Per-machine MR fallback**: IMEIs not found in their targeted folder get a broader per-machine scan that discovers that machine's actual `ModelRecogImages` date folders within range and scans both locations — before any IMEI is declared missing. (Previously MR had no retry; only the exact hinted folder was checked.)
+3. **Full discovery** (no usable hints): discover all date folders inside `{machine}/ModelRecogImages/` per machine and scan both PASS and `Error-Error`.
+
+In every path, for each `.png` file the engine extracts the IMEI via `extractMRImei()`:
+   - Filename format: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`
+   - Split on `-`, take segment index 3 (4th segment), validate 15 digits
+   - Check IMEI against audit list; if match, record with `matchType` (mr-pass/mr-fail), `mrFolder`, and `modelName` (parsed from the filename, falling back to the source folder name)
 
 **Incomplete detection** (renderer-side, in `ResultsPanel.tsx`):
 - Computed via `useMemo`: calculate median file count across all matches
@@ -215,10 +220,12 @@ interface HintDetectionMeta {
 3. **No-hint fallback**: IMEIs without usable hints fall back to the standard full broad scan across all selected folders.
 
 Smart Search also drives UI behavior in the Source panel:
-- **Auto-select machine folders**: When hints reference specific machines, those folders are automatically toggled on in the folder grid.
-- **Auto-fill date range**: When hints contain date values, the date range filter is pre-populated with the min/max dates from the hints.
+- **Auto-select machine folders**: When hints reference specific machines, those folders are automatically toggled on in the folder grid. Auto-select is keyed by content so it re-runs when the hint set changes.
+- **Auto-fill date range**: When hints contain date values, the date range filter is pre-populated. The End Date is set to **max(test date) + 1 day** to catch devices tested near midnight whose image folder rolled over to the next day.
 
-The same targeted approach applies to MR mode — when hints have both machine and date, the engine goes directly to `{machine}/ModelRecogImages/{date}/` instead of discovering all date folders.
+The same targeted approach applies to MR mode — when hints have both machine and date, the engine goes directly to `{machine}/ModelRecogImages/{hintDate}/` (plus the ±1-day neighbors via `expandDateRange()`) instead of discovering all date folders. Unlike v1.4, MR now also has a per-machine fallback for IMEIs missed in the targeted folder (see §3.3, MR mode algorithm).
+
+**Committed date-range state**: The search reads the date range from committed React state directly at search time, rather than a ref that could still hold the pre-auto-populate value. Combined with content-keyed machine auto-select, this means changing a setting or toggle no longer requires re-uploading the audit file for the next search to use the right filters.
 
 ### 3.4 ExportEngine
 
@@ -230,7 +237,7 @@ interface ExportRequest {
   destination: string;
   action: 'copy' | 'move';
   imageType: 'both' | 'bmp' | 'jpeg';
-  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei';
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei' | 'machine-model';
   duplicates: 'skip' | 'overwrite';
   aiImages: boolean;               // export only FD/ subfolder contents
 }
@@ -261,9 +268,12 @@ by-date:        dest/{date}/{IMEI}_{index}/
 machine-date:   dest/{machine}/{date}/{IMEI}_{index}/
 date-machine:   dest/{date}/{machine}/{IMEI}_{index}/
 by-imei:        dest/{IMEI}/{machine}_{date}_{index}/
+machine-model:  dest/{machine}/{model}/{IMEI}_{index}/
 ```
 
-**MR exports** use a separate `buildMRDestFilePath()` — each match is a single `.png` file.
+For `machine-model`, `{model}` is parsed from the match's SG-*.png filename (e.g. `Apple-iPhone13Pro`), falling back to the source folder name when unavailable.
+
+**MR exports** use a separate `buildMRDestFilePath()` — each match is a single `.png` file. Under `machine-model` the MR layout is `dest/{machine}/<Model|Error-Error>/{IMEI}/<date>_<tag>.png`, where the model/Error-Error level comes from `modelName`/`mrFolder` and the tag reflects the PASS/FAIL classification.
 
 **File operations:**
 - **Copy**: Recursive `copyFolderParallel()` with file-level concurrency and image type filtering
@@ -274,11 +284,21 @@ by-imei:        dest/{IMEI}/{machine}_{date}_{index}/
 
 ### 3.5 Logger
 
-Export logging with automatic rotation. File: `src/main/services/Logger.ts`.
+Rotating diagnostic logging shared by **both** the export and search engines. File: `src/main/services/Logger.ts`.
 
 - Generates timestamped log files in `%APPDATA%/Image Collection v2/logs/`
-- Keeps the 3 most recent log files, rotates older ones
-- Falls back to `ExportLogger(null, '')` (a no-op logger with no file I/O) when log file creation fails
+- Two independent log families, each keeping its **3 most recent** files and rotating older ones:
+  - `export-<timestamp>.log` — written on every export
+  - `search-<timestamp>.log` — written on every search (added in v1.5)
+- Falls back to a no-op logger (no file I/O) when log file creation fails, so logging never blocks an operation
+
+**Search log contents** (`search-<timestamp>.log`):
+- Request summary: search mode (standard vs MR), IMEI count, hint count, SmartSearch flag, MR PASS/FAIL flags, scan-index filter, date range, selected folders, root path
+- Path decision: which path ran (targeted vs full-discovery), with per-machine folder counts and drop-reason counters
+- Fallback transitions (e.g. targeted → per-machine fallback → broad), and scan errors encountered
+- Final summary: matches, missing, foldersScanned, scanErrors, elapsed
+
+The renderer's status-bar "View Log" link opens the specific completed search log; if no search log path is available it falls back to opening the logs folder.
 
 ### 3.6 Settings Store
 
@@ -419,7 +439,8 @@ image-collection-v2/
 │   │           └── Tooltip.tsx + .module.css
 │   └── shared/                    # Shared between main and renderer
 │       ├── types.ts               # All TypeScript interfaces
-│       ├── utils.ts               # formatElapsed, formatBytes, generateId
+│       ├── utils.ts               # formatElapsed, formatBytes, generateId,
+│       │                          #   addDaysToYMD, expandDateRange (±1-day MR lookups)
 │       ├── pool.ts                # Concurrent worker pool
 │       └── i18n.ts                # Translation strings (en, zh-TW, zh-CN)
 ├── package.json
@@ -479,6 +500,22 @@ const MR_FAIL_FOLDER = 'error-error';   // case-insensitive match
 // Shared constant from src/shared/utils.ts
 const DATE_FOLDER_REGEX = /^\d{8}$/;  // Matches YYYYMMDD
 ```
+
+### ±1-Day Date Utilities (midnight rollover)
+```typescript
+// From src/shared/utils.ts — a device tested near midnight can have its image
+// folder dated the next day, so MR targeted lookups probe neighboring days.
+
+// Shift a YYYYMMDD string by N calendar days (handles month/year boundaries).
+function addDaysToYMD(ymd: string, delta: number): string
+
+// Given hinted YYYYMMDD dates, return each date plus the day before and after,
+// clamped to the active date-range filter and de-duplicated.
+function expandDateRange(dates: string[], rangeStart?: string, rangeEnd?: string): string[]
+```
+Speculative neighbor folders that don't exist surface as ENOENT and are treated as
+benign (not counted as scan errors). The auto-populated End Date is likewise set to
+max(hinted date) + 1 day so the broad/fallback paths still reach a rolled-over folder.
 
 ### Cancellation Pattern
 ```typescript

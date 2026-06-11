@@ -30,14 +30,14 @@ const TOOLTIPS: Record<string, Record<Lang, string>> = {
     'zh-CN': '设备可能被扫描多次。"全部"包含所有扫描记录。"仅第一个"仅包含每个设备的首次扫描。'
   },
   mrPass: {
-    en: 'Collect images of devices the system correctly identified by model. Searches ModelRecogImages folders. When enabled, standard image collection is disabled.',
-    'zh-TW': '收集模型辨識通過（PASS）圖片 — AI 正確辨識的裝置。在 ModelRecogImages/{日期}/{品牌-型號}/ 資料夾中搜尋與稽核清單 IMEI 匹配的 .png 檔案。啟用後將停用標準圖片收集。',
-    'zh-CN': '收集模型识别通过（PASS）图片 — AI 正确识别的设备。在 ModelRecogImages/{日期}/{品牌-型号}/ 文件夹中搜索与审计列表 IMEI 匹配的 .png 文件。启用后将禁用标准图片收集。'
+    en: 'Collect Model Recognition (MR) images for the IMEIs in your audit list. Turning on MR PASS (or MR FAIL) enables MR collection — the search checks BOTH the recognized-model folders and Error-Error, so every listed device is returned regardless of grade (e.g. "wrong color"). Results are tagged PASS/FAIL by where each image was found. Replaces standard image collection.',
+    'zh-TW': '為稽核清單中的 IMEI 收集模型辨識（MR）圖片。啟用 MR PASS（或 MR FAIL）即開啟 MR 收集 — 搜尋會同時檢查已辨識型號資料夾與 Error-Error，因此無論評級為何（例如「顏色錯誤」），清單中的每部裝置都會被返回。結果會依來源位置標記 PASS/FAIL。將取代標準圖片收集。',
+    'zh-CN': '为审计列表中的 IMEI 收集模型识别（MR）图片。启用 MR PASS（或 MR FAIL）即开启 MR 收集 — 搜索会同时检查已识别型号文件夹与 Error-Error，因此无论评级如何（例如"颜色错误"），列表中的每台设备都会被返回。结果会按来源位置标记 PASS/FAIL。将取代标准图片收集。'
   },
   mrFail: {
-    en: 'Collect images of devices the system misidentified (wrong model, wrong placement). Searches Error-Error folders in ModelRecogImages.',
-    'zh-TW': '收集模型辨識失敗（FAIL）圖片 — AI 錯誤辨識的裝置（放置錯誤、顏色錯誤、型號錯誤）。在 ModelRecogImages/{日期}/Error-Error/ 中搜尋與稽核清單 IMEI 匹配的 .png 檔案。',
-    'zh-CN': '收集模型识别失败（FAIL）图片 — AI 错误识别的设备（放置错误、颜色错误、型号错误）。在 ModelRecogImages/{日期}/Error-Error/ 中搜索与审计列表 IMEI 匹配的 .png 文件。'
+    en: 'Same as MR PASS — collects Model Recognition images for your audit list. The search always checks BOTH the recognized-model folders and Error-Error, so nothing is missed. The PASS/FAIL tag only shows where each image was found, it is not a filter. Replaces standard image collection.',
+    'zh-TW': '與 MR PASS 相同 — 為稽核清單收集模型辨識圖片。搜尋一律同時檢查已辨識型號資料夾與 Error-Error，因此不會遺漏。PASS/FAIL 標記僅表示每張圖片的來源位置，並非篩選條件。將取代標準圖片收集。',
+    'zh-CN': '与 MR PASS 相同 — 为审计列表收集模型识别图片。搜索始终同时检查已识别型号文件夹与 Error-Error，因此不会遗漏。PASS/FAIL 标记仅表示每张图片的来源位置，并非筛选条件。将取代标准图片收集。'
   },
   aiImages: {
     en: 'When enabled, exports only the automated inspection photos (FD/ subfolder) instead of all images. When disabled, all images in the folder are exported including inspection photos.',
@@ -87,13 +87,18 @@ const ORGANIZE_OPTIONS: OrganizeOption[] = [
     value: 'by-model',
     label: { en: 'By Model', 'zh-TW': '按型號', 'zh-CN': '按型号' },
     desc: { en: 'Groups IMEI folders by device model (parsed from MR image filename). Example: dest/Apple-iPhone13Pro/IMEI_index/', 'zh-TW': '依裝置型號分組（從 MR 影像檔名解析）。範例：dest/Apple-iPhone13Pro/IMEI_index/', 'zh-CN': '按设备型号分组（从 MR 图像文件名解析）。示例：dest/Apple-iPhone13Pro/IMEI_index/' }
+  },
+  {
+    value: 'machine-model',
+    label: { en: 'Machine → Model', 'zh-TW': '機器 → 型號', 'zh-CN': '机器 → 型号' },
+    desc: { en: 'Two-level nesting: machine folder then device model (parsed from MR image filename). Example: dest/M8/Apple-iPhone13Pro/IMEI_index/', 'zh-TW': '兩級巢狀：先按機器資料夾，再按裝置型號（從 MR 影像檔名解析）。範例：dest/M8/Apple-iPhone13Pro/IMEI_index/', 'zh-CN': '两级嵌套：先按机器文件夹，再按设备型号（从 MR 图像文件名解析）。示例：dest/M8/Apple-iPhone13Pro/IMEI_index/' }
   }
 ]
 
 export interface SettingsState {
   action: 'copy' | 'move'
   imageType: 'both' | 'bmp' | 'jpeg'
-  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei' | 'by-model'
+  organize: 'flat' | 'by-machine' | 'by-date' | 'machine-date' | 'date-machine' | 'by-imei' | 'by-model' | 'machine-model'
   duplicates: 'skip' | 'overwrite'
   scanIndex: 'all' | 'first_only'
   mrPass: boolean

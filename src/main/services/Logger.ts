@@ -2,7 +2,7 @@ import { createWriteStream, type WriteStream } from 'fs'
 import { readdir, unlink, mkdir } from 'fs/promises'
 import { join } from 'path'
 
-export class ExportLogger {
+export class RotatingLogger {
   private stream: WriteStream | null
   private filePath: string
 
@@ -41,19 +41,24 @@ export class ExportLogger {
   }
 }
 
+/** Back-compat alias — export logging used this name. */
+export const ExportLogger = RotatingLogger
+export type ExportLogger = RotatingLogger
+
 /**
- * Create a new export logger.
- * Rotates old logs — keeps the 3 most recent, deletes the rest.
+ * Create a new rotating logger for the given prefix (e.g. 'export', 'search').
+ * Keeps the 3 most recent logs of that prefix, deletes the rest.
  * Falls back to a no-op logger (null stream) if log creation fails.
+ * Each prefix rotates independently so search logs never evict export logs.
  */
-export async function createExportLogger(logsDir: string): Promise<ExportLogger> {
+export async function createRotatingLogger(logsDir: string, prefix: string): Promise<RotatingLogger> {
   try {
     await mkdir(logsDir, { recursive: true })
 
-    // Find existing export logs, sorted oldest-first
+    // Find existing logs for this prefix, sorted oldest-first
     const allFiles = await readdir(logsDir)
     const logFiles = allFiles
-      .filter((f) => f.startsWith('export-') && f.endsWith('.log'))
+      .filter((f) => f.startsWith(`${prefix}-`) && f.endsWith('.log'))
       .sort()
 
     // Keep only 2 most recent (so adding the new one makes 3 total)
@@ -70,19 +75,29 @@ export async function createExportLogger(logsDir: string): Promise<ExportLogger>
     const now = new Date()
     const pad = (n: number): string => String(n).padStart(2, '0')
     const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${String(now.getMilliseconds()).padStart(3, '0')}`
-    const logFile = `export-${ts}.log`
+    const logFile = `${prefix}-${ts}.log`
     const logPath = join(logsDir, logFile)
 
     const stream = createWriteStream(logPath, { encoding: 'utf-8', flags: 'w' })
     stream.on('error', () => {
       // Disable logging on stream error (disk full, permission change)
-      // Export continues without logging rather than crashing
+      // Operation continues without logging rather than crashing
       stream.destroy()
     })
 
-    return new ExportLogger(stream, logPath)
+    return new RotatingLogger(stream, logPath)
   } catch {
-    // If we can't create the log, return a no-op logger (null stream) so export still works
-    return new ExportLogger(null, '')
+    // If we can't create the log, return a no-op logger (null stream) so the operation still works
+    return new RotatingLogger(null, '')
   }
+}
+
+/** Create a new export logger (keeps 3 most recent export logs). */
+export async function createExportLogger(logsDir: string): Promise<RotatingLogger> {
+  return createRotatingLogger(logsDir, 'export')
+}
+
+/** Create a new search logger (keeps 3 most recent search logs). */
+export async function createSearchLogger(logsDir: string): Promise<RotatingLogger> {
+  return createRotatingLogger(logsDir, 'search')
 }
