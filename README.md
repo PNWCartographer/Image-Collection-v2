@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.6 — audit-driven MR collection.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.7 — audit-driven MR collection.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -366,6 +366,12 @@ NAS_ROOT/                              (e.g. Z:\)
 ---
 
 ## Version History
+
+### v1.5.7 — Bulletproof Collection (2026-06-11)
+
+- **Works even with the "wrong" settings.** Every Smart Search now runs an instant **exact-path probe** first: it opens each device's `Machine\{date}\{IMEI}\` folder directly and grabs the image. Devices stored as a bare `{IMEI}` folder (wrong-color / MR uploads) are collected **regardless of whether MR was enabled or whether the audit had a grade column** — so an operator who doesn't understand the toggles still gets their images. Standard `{IMEI}_index` folders are found by the existing enumeration only for the IMEIs the probe didn't catch, so nothing is slower than before for those.
+- All organize modes (Flat, By Machine, By Date, Machine→Model, By Model, …) work for MR matches — Flat is no longer required.
+- Image collection never depends on the model column; without it, only By Model / Machine→Model fall back to an `Unknown` folder (every other mode is unaffected).
 
 ### v1.5.6 — Sticky Header Fix (2026-06-11)
 

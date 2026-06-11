@@ -521,25 +521,23 @@ async function searchBroad(
 
 // ── MR direct collection ───────────────────────────────────────────
 
-/**
- * MR collection via exact-path access. Each wrong-color/MR device has a folder
- * named exactly by its IMEI (no scan-index suffix) at Machine/{date}/{IMEI}/,
- * containing a single image .png (timestamp-named, not SG-*). We open that exact
- * folder directly — this never enumerates the (enormous) parent date folder, so
- * it is fast regardless of folder size and immune to the concurrency saturation
- * that made directory listings time out.
- */
-async function searchMRDirect(
-  request: SearchRequest,
-  ctx: SearchContext,
-  onProgress: (progress: SearchProgress) => void,
-  onMatches: (matches: SearchMatch[]) => void
-): Promise<SearchResult> {
-  const { token, matches, foundIMEIs, logger } = ctx
+interface HintedTarget {
+  imei: string
+  machine: string
+  date: string
+  model?: string
+}
+
+/** Build per-IMEI exact-path targets from machine+date hints (within range + selected). */
+function buildHintedTargets(request: SearchRequest): {
+  targets: HintedTarget[]
+  droppedNoHint: number
+  droppedMachine: number
+  droppedDate: number
+} {
   const hints = request.hints!
   const selectedSet = new Set(request.selectedFolders)
-
-  const targets: { imei: string; machine: string; date: string; model?: string }[] = []
+  const targets: HintedTarget[] = []
   let droppedNoHint = 0
   let droppedMachine = 0
   let droppedDate = 0
@@ -550,13 +548,31 @@ async function searchMRDirect(
     if (!isDateInRange(hint.date, request)) { droppedDate++; continue }
     targets.push({ imei, machine: hint.machine, date: hint.date, model: hint.model })
   }
-  logger.info(`MR direct: opening ${targets.length} device folders (dropped: noHint=${droppedNoHint}, machineNotSelected=${droppedMachine}, dateOutOfRange=${droppedDate})`)
+  return { targets, droppedNoHint, droppedMachine, droppedDate }
+}
 
+/**
+ * Open each target's EXACT folder Machine/{date}/{IMEI}/ and take the .png inside.
+ * The folder name is the bare IMEI (no scan-index suffix) — how wrong-color / MR
+ * upload devices are stored. Opening a known path never enumerates the (enormous)
+ * parent date folder, so it's fast regardless of folder size and immune to the
+ * concurrency saturation that times out directory listings. Already-found IMEIs
+ * are skipped, so this also serves as a probe ahead of standard enumeration.
+ */
+async function collectMRDirect(
+  request: SearchRequest,
+  targets: HintedTarget[],
+  ctx: SearchContext,
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void
+): Promise<void> {
+  const { token, matches, foundIMEIs } = ctx
   const total = targets.length
   let done = 0
 
   await pooled(targets, MR_DIRECT_CONCURRENCY, token, async (t) => {
     if (token.cancelled) return
+    if (foundIMEIs.has(t.imei)) { done++; return }
     const folderPath = join(request.rootPath, t.machine, t.date, t.imei)
     const started = Date.now()
     try {
@@ -586,7 +602,7 @@ async function searchMRDirect(
         ctx.noMRImage++
       }
     } catch (err) {
-      // ENOENT just means this device has no folder under this machine/date → missing.
+      // ENOENT just means this device has no {IMEI} folder under this machine/date.
       if (!isBenignDirError(err)) {
         ctx.scanErrors++
         ctx.scanErrorDetails.push(`${t.machine}/${t.date}/${t.imei} (${Date.now() - started}ms): ${errorMessage(err)}`)
@@ -607,8 +623,19 @@ async function searchMRDirect(
       })
     }
   })
+}
 
-  return buildResult(ctx, request.imeis, total, onProgress)
+/** MR collection: open each device's exact IMEI folder and take its image. */
+async function searchMRDirect(
+  request: SearchRequest,
+  ctx: SearchContext,
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void
+): Promise<SearchResult> {
+  const { targets, droppedNoHint, droppedMachine, droppedDate } = buildHintedTargets(request)
+  ctx.logger.info(`MR direct: opening ${targets.length} device folders (dropped: noHint=${droppedNoHint}, machineNotSelected=${droppedMachine}, dateOutOfRange=${droppedDate})`)
+  await collectMRDirect(request, targets, ctx, onProgress, onMatches)
+  return buildResult(ctx, request.imeis, targets.length, onProgress)
 }
 
 // ── Main search dispatcher ─────────────────────────────────────────
@@ -638,8 +665,28 @@ export async function searchIMEIs(
 
   // Smart Search: targeted lookups when audit file had machine + date columns
   if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
+    // Bulletproofing: a universal exact-path probe first. Devices stored as a bare
+    // {IMEI} folder (wrong-color / MR uploads) are found here instantly — so they're
+    // collected even if the operator never enabled MR and the audit had no grade
+    // column to auto-enable it. Type A ({IMEI}_index) devices aren't here (fast
+    // ENOENT) and fall through to the standard enumeration below.
+    const { targets: probeTargets } = buildHintedTargets(request)
+    ctx.logger.info(`Exact-path probe: checking ${probeTargets.length} {IMEI} folders before enumeration`)
+    await collectMRDirect(request, probeTargets, ctx, onProgress, onMatches)
+    if (token.cancelled) {
+      return buildResult(ctx, request.imeis, probeTargets.length, onProgress)
+    }
+
+    // Standard enumeration only for IMEIs the probe didn't find (Type A {IMEI}_index)
+    const unfoundImeis = request.imeis.filter((i) => !foundIMEIs.has(i))
+    if (unfoundImeis.length === 0) {
+      ctx.logger.info('Exact-path probe found every hinted device — skipping enumeration')
+      return buildResult(ctx, request.imeis, probeTargets.length, onProgress)
+    }
+    const stdRequest: SearchRequest = { ...request, imeis: unfoundImeis }
+
     const { searched: directSearched, fallbackImeis, machineOnlyGroups } = await searchTargeted(
-      request, ctx, onProgress, onMatches
+      stdRequest, ctx, onProgress, onMatches
     )
 
     if (token.cancelled) {
