@@ -1,6 +1,6 @@
 # Image Collection v2 — Test Procedure
 
-**Covers:** All implemented milestones — UI, search, export, multi-source, history, bilingual, packaging, MR search reliability & diagnostics (v1.5)  
+**Covers:** All implemented milestones — UI, search, export, multi-source, history, bilingual, packaging, MR search reliability & diagnostics (v1.5.1)  
 **Last updated:** 2026-06-10
 
 ---
@@ -318,14 +318,15 @@
 
 | # | Test | Expected |
 |---|------|----------|
-| 23.1 | Enable MR PASS (only), run search | Search scans **both** Brand-Model and Error-Error; results include PASS-tagged (green) and FAIL-tagged (red) matches per where each image was found |
-| 23.2 | Enable MR FAIL (only), run search | Same both-folder scan and tagging as 23.1 — toggle choice does not narrow the search path |
-| 23.3 | Enable both MR PASS and MR FAIL | Identical result set to 23.1/23.2 (enabling either toggle already scans everything) |
-| 23.4 | Run an MR search with a "wrong color" style audit list (devices graded wrong-color whose images sit in PASS folders) | Every listed IMEI's image is returned; wrong-color devices appear tagged PASS (because their image is in a model folder, not Error-Error) — none are dropped as missing |
-| 23.5 | Confirm an audit IMEI that is genuinely only in Error-Error | Returned and tagged FAIL |
-| 23.6 | Export MR results | .png files exported with correct naming and organization (PASS/FAIL reflected in tag/folder) |
-| 23.7 | MR export in Move mode | MR images are always copied (never deleted from source) |
-| 23.8 | MR fallback: include an IMEI whose image is in a date folder one day off from its hint | IMEI is still found via the per-machine MR fallback / ±1-day lookup, not reported missing |
+| 23.1 | Enable MR PASS (only), run search | Runs the standard fast IMEI-folder search (no `ModelRecogImages` enumeration); each matched device's `SG-*.png` is collected and tagged PASS (green) / FAIL (red) from the model name in the filename |
+| 23.2 | Enable MR FAIL (only), run search | Same IMEI-folder search and `SG-*.png` extraction as 23.1 — toggle choice does not change the search path |
+| 23.3 | Enable both MR PASS and MR FAIL | Identical result set to 23.1/23.2 (enabling either toggle already collects every IMEI's `SG-*.png`) |
+| 23.4 | Run an MR search with a "wrong color" style audit list (devices graded wrong-color) | Every listed IMEI's `SG-*.png` is returned; wrong-color devices appear tagged PASS (their `SG-*.png` model is a real model, not `Error-Error`) — none are dropped as missing |
+| 23.5 | Confirm an audit IMEI whose `SG-*.png` model is `Error-Error` | Returned and tagged FAIL |
+| 23.6 | Export MR results | Only the `SG-*.png` is exported per match, with correct naming and organization (PASS/FAIL reflected in tag/folder) |
+| 23.7 | MR export in Move mode | MR images are always copied (the `SG-*.png` is never deleted from its source IMEI folder) |
+| 23.8 | Include an IMEI tested near midnight whose folder rolled to the next day | Found via the standard search's auto End-Date +1 (max test date + 1 day), not reported missing |
+| 23.9 | Confirm a matched IMEI folder that contains no `SG-*.png` | Reported as missing (and counted in the search log) |
 
 ---
 
@@ -346,7 +347,7 @@
 | 24b.1 | Run an MR search, then check `%APPDATA%/Image Collection v2/logs/` | A new `search-<timestamp>.log` file is present (separate from export logs) |
 | 24b.2 | Open the search log | Shows the request summary (mode, IMEI/hint counts, MR + SmartSearch flags, scan-index filter, date range, folders, root) and the **path decision** (targeted vs full-discovery) with per-machine folder counts |
 | 24b.3 | Verify the log records fallbacks and errors | Fallback transitions and scan errors are logged; a final summary line shows matches, missing, foldersScanned, scanErrors, elapsed |
-| 24b.4 | After the search completes, click "View Log" in the status bar | The specific `search-*.log` for that run opens (falls back to opening the logs folder if no search-log path is available) |
+| 24b.4 | After the search completes, click "View Log" in the status bar | The logs folder opens in Explorer (the run's `search-*.log` is present there) |
 | 24b.5 | Run 4 searches | Only the 3 most recent search logs remain (oldest rotated); export logs are unaffected |
 
 ---

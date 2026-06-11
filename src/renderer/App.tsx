@@ -535,11 +535,7 @@ function App(): JSX.Element {
       <StatusBar
         message={statusMsg}
         showLogLink
-        onOpenLogs={() =>
-          searchResult?.logPath
-            ? window.electronAPI.openPath(searchResult.logPath)
-            : window.electronAPI.openLogsFolder()
-        }
+        onOpenLogs={() => window.electronAPI.openLogsFolder()}
         lang={lang}
       />
     </div>

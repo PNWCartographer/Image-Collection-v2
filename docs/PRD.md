@@ -126,24 +126,24 @@ After search completes, results are displayed **before export** so the user can 
 
 **Model Recognition (MR) Image Toggles:**
 
-MR images are collected from a **separate directory tree** (`ModelRecogImages/`) under each machine folder, not from the standard IMEI_Index folders. The system sorts MR images by AI recognition result: correctly identified devices go into `{Brand}-{Model}` folders (PASS), while misidentified devices go into `Error-Error` (FAIL).
+Each device's Model Recognition image — a single `SG-*.png` — is captured by the system and stored **inside that device's IMEI_Index folder**, alongside the scan images, `DefectLog.xml`, and `Grade.json`. MR mode collects exactly this file.
 
-A device's grade (e.g. "Wrong Color") is recorded **only in the audit file**, never in the folder structure — a wrong-color device's MR image still sits in its normal recognized-model (PASS) folder. Because the folder structure cannot tell PASS from FAIL grades, the two toggles do **not** narrow the search path. Instead, enabling **either** toggle activates MR mode and **always scans both** the Brand-Model (PASS) folders and `Error-Error` (FAIL). The audit list is the filter: every listed IMEI's image is returned regardless of grade, then tagged by where it was found.
+Enabling **either** toggle activates MR mode, which runs the **same fast standard IMEI-folder search** (the normal `{machine}/{date}/{IMEI}_{index}/` lookup) and then exports only the `SG-*.png` from each matched folder. It does **not** scan the `ModelRecogImages/` tree — those `{Brand-Model}/` folders hold tens of thousands of files and time out over SMB. A device's grade (e.g. "Wrong Color") is knowable only from the audit file, so the audit list is the filter; results are tagged PASS/FAIL from the model name parsed out of the `SG-*.png` filename.
 
 | Toggle | Default | Activates | Result Tag |
 |--------|---------|-----------|------------|
-| MR PASS | OFF | MR mode (scans both PASS + Error-Error) | Images found in a Brand-Model folder are tagged **PASS** (green) |
-| MR FAIL | OFF | MR mode (scans both PASS + Error-Error) | Images found in `Error-Error` are tagged **FAIL** (red) |
+| MR PASS | OFF | MR mode (standard search + `SG-*.png` extraction) | A `SG-*.png` whose model is not `Error-Error` is tagged **PASS** (green) |
+| MR FAIL | OFF | MR mode (standard search + `SG-*.png` extraction) | A `SG-*.png` whose model is `Error-Error` is tagged **FAIL** (red) |
 
 **MR toggle rules:**
 - When **both MR toggles are OFF**: normal image collection from IMEI_Index folders per Image Type setting (JPEG/BMP/Both)
-- When **either toggle is ON** (PASS, FAIL, or both): tool searches `ModelRecogImages/` instead of the standard date→IMEI_Index path and always scans **both** the Brand-Model folders and `Error-Error`. Standard scan images are excluded. There is intentionally **no "wrong color" toggle** — the audit list determines which IMEIs are collected, and tagging is by folder location
-- MR mode does not bypass IMEI matching — the IMEI is extracted from the `.png` filename (4th segment when split on `-`) and matched against the audit list
-- **Fallback**: IMEIs not found in their targeted `ModelRecogImages/{date}/` folder get a broader per-machine MR scan (the machine's actual date folders within range, both PASS and Error-Error) before being declared missing — mirroring the standard search's fallback
-- **±1-day handling**: targeted MR lookups also check the day before/after each hinted date (a device tested near midnight can land in the next day's folder); the auto-populated End Date is set to max(test date) + 1 day
+- When **either toggle is ON** (PASS, FAIL, or both): the tool runs the standard date→IMEI_Index search and, for each match, exports only that folder's `SG-*.png` (the whole-folder scan images are excluded). There is intentionally **no "wrong color" toggle** — the audit list determines which IMEIs are collected, and PASS/FAIL tagging comes from the parsed model name
+- MR mode does **not** scan `ModelRecogImages/` — the per-device `SG-*.png` inside each IMEI folder is the same image, looked up far faster by the standard search
+- IMEI matching is unchanged from standard search (folder name `{IMEI}_{index}`); the `SG-*.png` is then read from the matched folder and its model parsed from the filename
+- A matched IMEI folder that contains no `SG-*.png` is reported as missing (and counted in the search log)
+- **Midnight rollover** is handled by the standard search's auto End Date = max(test date) + 1 day (MR mode inherits it); there is no MR-specific ±1-day folder probing
 - MR image filename pattern: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`
-- PASS folder detection: any folder under a date folder within ModelRecogImages that is NOT named `Error-Error`
-- FAIL folder detection: exact folder name `Error-Error`
+- PASS/FAIL detection: from the `{model}` segment of the filename — `Error-Error` → FAIL, anything else → PASS
 
 **Duplicate Handling:**
 | Option | Behavior |
@@ -240,7 +240,7 @@ Both searches and exports write rotating diagnostic logs to `%APPDATA%/Image Col
 
 **Export log** (`export-<timestamp>.log`) records the export settings header, per-file entries, and a throughput summary.
 
-The status-bar **"View Log"** link opens the specific search log once a search has completed (falling back to opening the logs folder otherwise).
+The status-bar **"View Log"** link opens the logs folder.
 
 ---
 

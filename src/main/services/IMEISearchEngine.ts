@@ -1,11 +1,10 @@
 import { readdir } from 'fs/promises'
 import { join } from 'path'
 import type { SearchRequest, SearchMatch, SearchProgress, SearchResult, AuditHint } from '../../shared/types'
-import { PROGRESS_THROTTLE_MS, IMEI_REGEX, DATE_FOLDER_REGEX, expandDateRange } from '../../shared/utils'
+import { PROGRESS_THROTTLE_MS, IMEI_REGEX, DATE_FOLDER_REGEX } from '../../shared/utils'
 import { pooled, type CancelToken } from '../../shared/pool'
 import { createSearchLogger, RotatingLogger } from './Logger'
 const MR_ROOT = 'modelrecogimages'
-const MR_FAIL_FOLDER = 'error-error'
 const SKIP_FOLDERS = new Set([
   '#recycle', '$recycle.bin', MR_ROOT, 'version_control'
 ])
@@ -31,9 +30,9 @@ async function readdirWithTimeout(
 }
 
 /**
- * A missing or non-directory path is expected during discovery (especially for
- * speculative ±1-day folders) — it means "no images here", not a real failure.
- * Real failures (permission, timeout, network) are still surfaced as scan errors.
+ * A missing or non-directory path is expected during discovery — it means
+ * "nothing here", not a real failure. Real failures (permission, timeout,
+ * network) are still surfaced as scan errors.
  */
 function isBenignDirError(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException)?.code
@@ -58,11 +57,21 @@ interface SearchContext {
   scanErrorDetails: string[]
   /** Count of IMEIs skipped by scan-index filter (had only higher-index entries). */
   scanIndexFiltered: number
+  /**
+   * MR mode: collect only the SG-*.png Model Recognition image from each IMEI
+   * folder (the same image the AI captured) instead of the full folder. This
+   * reuses the fast IMEI-folder lookup — ModelRecogImages model folders are far
+   * too large to enumerate over SMB, but the SG-*.png also lives in the IMEI
+   * folder alongside the scan images.
+   */
+  mrMode: boolean
+  /** MR mode: number of matched IMEI folders that had no SG-*.png. */
+  noMRImage: number
   /** Diagnostic log for this search (no-op if logging unavailable). */
   logger: RotatingLogger
 }
 
-async function createSearchContext(imeis: string[], logsDir?: string): Promise<SearchContext> {
+async function createSearchContext(imeis: string[], logsDir?: string, mrMode = false): Promise<SearchContext> {
   // Cancel any in-flight search before starting a new one
   activeToken.cancelled = true
   const token = { cancelled: false }
@@ -77,6 +86,8 @@ async function createSearchContext(imeis: string[], logsDir?: string): Promise<S
     scanErrors: 0,
     scanErrorDetails: [],
     scanIndexFiltered: 0,
+    mrMode,
+    noMRImage: 0,
     logger
   }
 }
@@ -139,6 +150,35 @@ async function buildMatchBatch(
   for (let i = 0; i < pending.length; i++) {
     const m = pending[i]
     const fc = fileCounts[i]
+
+    if (ctx.mrMode) {
+      // MR mode: emit a match for the SG-*.png MR image inside this IMEI folder.
+      if (!fc.mrImagePath || !fc.mrImageName) {
+        ctx.noMRImage++
+        continue
+      }
+      const isFail = !!fc.modelName && /error[-_]?error/i.test(fc.modelName)
+      const match: SearchMatch = {
+        imei: m.imei,
+        machineName: machine,
+        date: dateStr,
+        scanIndex: m.scanIndex,
+        folderName: fc.mrImageName,
+        sourcePath: fc.mrImagePath,
+        bmpCount: 0,
+        jpegCount: 0,
+        otherCount: 1,
+        totalFiles: 1,
+        matchType: isFail ? 'mr-fail' : 'mr-pass',
+        mrFolder: fc.modelName ?? undefined,
+        modelName: fc.modelName ?? undefined
+      }
+      ctx.matches.push(match)
+      batch.push(match)
+      ctx.foundIMEIs.add(m.imei)
+      continue
+    }
+
     const match: SearchMatch = {
       imei: m.imei,
       machineName: machine,
@@ -394,15 +434,16 @@ export async function searchIMEIs(
   onMatches: (matches: SearchMatch[]) => void,
   logsDir?: string
 ): Promise<SearchResult> {
-  // MR mode: entirely different search path
-  if (request.mrPass || request.mrFail) {
-    return searchMRImages(request, onProgress, onMatches, logsDir)
-  }
-
-  const ctx = await createSearchContext(request.imeis, logsDir)
+  // MR mode reuses the fast IMEI-folder search and pulls the SG-*.png out of
+  // each folder (see SearchContext.mrMode) — it does NOT scan ModelRecogImages.
+  const mrMode = !!(request.mrPass || request.mrFail)
+  const ctx = await createSearchContext(request.imeis, logsDir, mrMode)
   const { token, foundIMEIs } = ctx
 
-  logSearchHeader(ctx.logger, request, 'standard')
+  logSearchHeader(ctx.logger, request, mrMode ? 'MR' : 'standard')
+  if (mrMode) {
+    ctx.logger.info('MR collection: locating each IMEI folder and extracting its SG-*.png (ModelRecogImages folders are NOT scanned — too large to enumerate)')
+  }
 
   // Smart Search: targeted lookups when audit file had machine + date columns
   if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
@@ -489,6 +530,9 @@ async function buildResult(
     totalFolders: foldersScanned
   })
 
+  if (ctx.mrMode && ctx.noMRImage > 0) {
+    ctx.logger.info(`MR: ${ctx.noMRImage} matched IMEI folder(s) had no SG-*.png MR image`)
+  }
   if (ctx.scanErrorDetails.length > 0) {
     ctx.logger.warn(`Scan errors (${ctx.scanErrors}):`)
     for (const d of ctx.scanErrorDetails.slice(0, 50)) ctx.logger.warn(`  ${d}`)
@@ -536,261 +580,6 @@ function isDateInRange(dateStr: string, request: SearchRequest): boolean {
   return true
 }
 
-/**
- * Extract the 15-digit IMEI from an MR image filename.
- * Format: SG-{machine}-{code}-{IMEI}-{brand}-{model}.png
- * L2: Scans all segments for a 15-digit match instead of assuming position 3,
- * making extraction robust against format variations.
- */
-function extractMRImei(fileName: string): string | null {
-  const segments = fileName.replace(/\.png$/i, '').split('-')
-  for (const seg of segments) {
-    if (IMEI_REGEX.test(seg)) return seg
-  }
-  return null
-}
-
-// ── MR (Model Recognition) search ──────────────────────────────────
-// Searches ModelRecogImages/{date}/{Brand-Model|Error-Error}/ for .png
-// files named SG-{machine}-{code}-{IMEI}-{brand}-{model}.png.
-//
-// Enabling EITHER MR PASS or MR FAIL turns on MR collection, and the search
-// then ALWAYS scans both PASS (Brand-Model) and FAIL (Error-Error) locations
-// for the audit IMEIs — "Wrong Color" (or any grade) is only knowable from the
-// audit list, never from the NAS, so the loaded list IS the filter and you
-// can't miss images by choosing the "wrong" toggle. Each result is tagged
-// mr-pass / mr-fail by where it was found. Unfound IMEIs get a broader
-// per-machine MR scan before being declared missing.
-
-interface MRScanOpts {
-  includePass: boolean
-  includeFail: boolean
-  /** When true, skip IMEIs already found (used by the fallback to avoid duplicates). */
-  skipFound: boolean
-}
-
-/** Scan a set of ModelRecogImages date folders for matching .png files. */
-async function scanMRDateFolders(
-  dateFolders: DateFolder[],
-  ctx: SearchContext,
-  imeiSet: Set<string>,
-  opts: MRScanOpts,
-  onMatches: (matches: SearchMatch[]) => void,
-  sendProgress: (machine: string, dateStr: string) => void,
-  foldersScanned: { value: number }
-): Promise<void> {
-  const { token } = ctx
-  await pooled(dateFolders, CONCURRENCY, token, async ({ machine, datePath, dateStr }) => {
-    if (token.cancelled) return
-    sendProgress(machine, dateStr)
-
-    try {
-      const subFolders = await readdirWithTimeout(datePath, { withFileTypes: true })
-
-      for (const sub of subFolders) {
-        if (token.cancelled) break
-        if (!sub.isDirectory()) continue
-
-        const isErrorFolder = sub.name.toLowerCase() === MR_FAIL_FOLDER
-
-        // Keep only the result types the toggles asked for
-        if (isErrorFolder && !opts.includeFail) continue
-        if (!isErrorFolder && !opts.includePass) continue
-
-        const subPath = join(datePath, sub.name)
-
-        try {
-          const files = await readdirWithTimeout(subPath, { withFileTypes: true })
-          const batch: SearchMatch[] = []
-
-          for (const file of files) {
-            if (!file.isFile()) continue
-            if (!file.name.toLowerCase().endsWith('.png')) continue
-
-            const imeiFromFile = extractMRImei(file.name)
-            if (!imeiFromFile) continue
-            if (!imeiSet.has(imeiFromFile)) continue
-            if (opts.skipFound && ctx.foundIMEIs.has(imeiFromFile)) continue
-
-            const match: SearchMatch = {
-              imei: imeiFromFile,
-              machineName: machine,
-              date: dateStr,
-              scanIndex: 0,
-              folderName: file.name,
-              sourcePath: join(subPath, file.name),
-              bmpCount: 0,
-              jpegCount: 0,
-              otherCount: 1,
-              totalFiles: 1,
-              matchType: isErrorFolder ? 'mr-fail' : 'mr-pass',
-              mrFolder: sub.name,
-              modelName: extractModelFromMRFilename(file.name) ?? undefined
-            }
-            ctx.matches.push(match)
-            batch.push(match)
-            ctx.foundIMEIs.add(imeiFromFile)
-          }
-
-          if (batch.length > 0) onMatches(batch)
-        } catch (err) {
-          // Subfolder not accessible
-          if (!isBenignDirError(err)) {
-            ctx.scanErrors++
-            ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}/${sub.name}: ${errorMessage(err)}`)
-          }
-        }
-      }
-    } catch (err) {
-      // Date folder not accessible (or speculative ±1-day folder that doesn't exist)
-      if (!isBenignDirError(err)) {
-        ctx.scanErrors++
-        ctx.scanErrorDetails.push(`MR ${machine}/${dateStr}: ${errorMessage(err)}`)
-      }
-    }
-
-    foldersScanned.value++
-  })
-}
-
-/** Discover ModelRecogImages date folders under the given machines (within range). */
-async function discoverMRDateFolders(
-  machines: string[],
-  request: SearchRequest,
-  ctx: SearchContext
-): Promise<DateFolder[]> {
-  const dateFolders: DateFolder[] = []
-  await pooled(machines, CONCURRENCY, ctx.token, async (machine) => {
-    if (ctx.token.cancelled) return
-    const mrPath = join(request.rootPath, machine, 'ModelRecogImages')
-    try {
-      const entries = await readdirWithTimeout(mrPath, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        if (!DATE_FOLDER_REGEX.test(entry.name)) continue
-        if (!isDateInRange(entry.name, request)) continue
-        dateFolders.push({
-          machine,
-          datePath: join(mrPath, entry.name),
-          dateStr: entry.name
-        })
-      }
-    } catch (err) {
-      if (!isBenignDirError(err)) {
-        ctx.scanErrors++
-        ctx.scanErrorDetails.push(`MR ${machine}/ModelRecogImages: ${errorMessage(err)}`)
-      }
-    }
-  })
-  return dateFolders
-}
-
-async function searchMRImages(
-  request: SearchRequest,
-  onProgress: (progress: SearchProgress) => void,
-  onMatches: (matches: SearchMatch[]) => void,
-  logsDir?: string
-): Promise<SearchResult> {
-  const ctx = await createSearchContext(request.imeis, logsDir)
-  const { token, imeiSet, matches, foundIMEIs, logger } = ctx
-
-  logSearchHeader(logger, request, 'MR')
-
-  // MR mode collects every listed IMEI's image regardless of how it was graded.
-  // "Wrong Color" (and any other grade) is only knowable from the audit list,
-  // never from the NAS folder structure — so once MR collection is enabled
-  // (either toggle), we always scan BOTH the recognized-model (PASS) folders
-  // and Error-Error (FAIL). Results are tagged mr-pass / mr-fail for the UI.
-  const includePass = true
-  const includeFail = true
-
-  // Smart Search for MR: if hints have machine + date, go directly to
-  // Machine/ModelRecogImages/{date ±1 day}/ instead of discovering all folders.
-  // ±1 day catches devices tested near midnight whose folder rolls to the next day.
-  let usedTargeted = false
-  const dateFolders: DateFolder[] = []
-
-  if (request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
-    usedTargeted = true
-    const selectedSet = new Set(request.selectedFolders)
-    const addedPaths = new Set<string>()
-    let droppedMachine = 0
-    let droppedDate = 0
-    let droppedNoHint = 0
-
-    for (const imei of request.imeis) {
-      const hint = request.hints[imei]
-      if (!hint?.machine || !hint?.date) { droppedNoHint++; continue }
-      if (!selectedSet.has(hint.machine)) { droppedMachine++; continue }
-
-      let anyDay = false
-      for (const day of expandDateRange(hint.date)) {
-        if (!isDateInRange(day, request)) continue
-        anyDay = true
-        const key = `${hint.machine}/${day}`
-        if (addedPaths.has(key)) continue
-        addedPaths.add(key)
-        dateFolders.push({
-          machine: hint.machine,
-          datePath: join(request.rootPath, hint.machine, 'ModelRecogImages', day),
-          dateStr: day
-        })
-      }
-      if (!anyDay) droppedDate++
-    }
-    logger.info(`MR path: targeted   dateFolders=${dateFolders.length} (incl. ±1 day)   dropped(machineNotSelected=${droppedMachine}, dateOutOfRange=${droppedDate}, noHint=${droppedNoHint})`)
-  }
-
-  // If no targeted MR folders, fall back to full discovery
-  if (dateFolders.length === 0) {
-    usedTargeted = false
-    const discovered = await discoverMRDateFolders(request.selectedFolders, request, ctx)
-    dateFolders.push(...discovered)
-    logger.info(`MR path: full discovery   dateFolders=${dateFolders.length}`)
-  }
-
-  if (token.cancelled) return buildResult(ctx, request.imeis, 0, onProgress)
-
-  const { sendProgress, foldersScanned } = createProgressTracker(dateFolders, matches, onProgress)
-
-  // Phase 2: scan both PASS and Error-Error subfolders for the audit IMEIs
-  await scanMRDateFolders(
-    dateFolders, ctx, imeiSet,
-    { includePass, includeFail, skipFound: false },
-    onMatches, sendProgress, foldersScanned
-  )
-
-  // Fallback: IMEIs not found in their targeted folders → broader per-machine MR scan.
-  // Mirrors the standard search's machine-only/broad fallbacks (searchBroad).
-  if (!token.cancelled && usedTargeted) {
-    const mrFallbackImeis = request.imeis.filter((i) => !foundIMEIs.has(i))
-    if (mrFallbackImeis.length > 0) {
-      // Limit to the machines those IMEIs were hinted to (or all selected if unknown)
-      const fbMachines = new Set<string>()
-      for (const imei of mrFallbackImeis) {
-        const m = request.hints?.[imei]?.machine
-        if (m && request.selectedFolders.includes(m)) fbMachines.add(m)
-      }
-      const machinesToScan = fbMachines.size > 0 ? [...fbMachines] : request.selectedFolders
-      logger.info(`MR fallback: ${mrFallbackImeis.length} IMEIs not in targeted folders -> broad MR scan of ${machinesToScan.length} machine(s)`)
-
-      const fbDateFolders = await discoverMRDateFolders(machinesToScan, request, ctx)
-      if (!token.cancelled && fbDateFolders.length > 0) {
-        const fbImeiSet = new Set(mrFallbackImeis)
-        const fbTracker = createProgressTracker(fbDateFolders, matches, onProgress)
-        await scanMRDateFolders(
-          fbDateFolders, ctx, fbImeiSet,
-          { includePass, includeFail, skipFound: true },
-          onMatches, fbTracker.sendProgress, fbTracker.foldersScanned
-        )
-        foldersScanned.value += fbDateFolders.length
-      }
-    }
-  }
-
-  return buildResult(ctx, request.imeis, foldersScanned.value, onProgress)
-}
-
 interface FileCountResult {
   bmp: number
   jpeg: number
@@ -799,6 +588,10 @@ interface FileCountResult {
   modelName: string | null
   /** M10: true when the folder could not be read (distinguishes from empty). */
   error?: boolean
+  /** MR mode: filename of the SG-*.png Model Recognition image in this folder. */
+  mrImageName?: string
+  /** MR mode: full path to the SG-*.png Model Recognition image. */
+  mrImagePath?: string
 }
 
 async function countFiles(folderPath: string): Promise<FileCountResult> {
@@ -841,8 +634,10 @@ async function countFilesRecursive(dirPath: string, counts: FileCountResult): Pr
       counts.other++
     }
 
-    // Detect MR image (SG-*.png) and extract Brand-Model
-    if (!counts.modelName && lower.startsWith('sg-') && lower.endsWith('.png')) {
+    // Detect MR image (SG-*.png) — capture its name/path and Brand-Model.
+    if (!counts.mrImageName && lower.startsWith('sg-') && lower.endsWith('.png')) {
+      counts.mrImageName = name
+      counts.mrImagePath = join(dirPath, name)
       const model = extractModelFromMRFilename(name)
       if (model) counts.modelName = model
     }
