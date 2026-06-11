@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.7 — audit-driven MR collection.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.8 — hardened audit parsing.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -373,6 +373,17 @@ NAS_ROOT/                              (e.g. Z:\)
 ---
 
 ## Version History
+
+### v1.5.8 — Hardened Audit Parsing (2026-06-11)
+
+Defensive parsing changes that **prevent silent loss of IMEIs** from real-world audit files, with no change to how clean files are read (the production list still parses identically — 402 rows, 397 unique, 5 duplicates flagged):
+
+- **IMEIs with separators are recovered** — values like `35-998765-432109-8` or `3539 7910 2606 579` are normalized (spaces/dashes stripped) before validation, so a formatted column no longer drops every row.
+- **Scientific-notation IMEIs are restored** — when Excel stores a 15-digit IMEI as a number it renders it as `3.50308E+14`; the parser now reads the cell's true numeric value and writes back the full `350308317018557` (exact, since 15 digits fit in a JS integer).
+- **Excel serial dates are understood** — a date cell exported as a plain number (e.g. `46180`) is converted to the real calendar date, range-bounded to ~2009–2064 so ordinary integers elsewhere are never misread. All existing date formats (`YYYYMMDD`, `YYYY-MM-DD`, `M/D/YY`, with or without a time) are unchanged.
+- **UTF-16 / BOM text files are decoded** — a CSV or TXT saved as "Unicode Text" (UTF-16 LE/BE) or with a UTF-8 BOM is now read correctly instead of as garbled bytes that match nothing.
+- **Duplicate IMEIs keep the most recent test** — when the same IMEI appears more than once (a re-tested device), its Machine/Date/Model hint is taken from the **latest** date, while every duplicate is still flagged in the results as before.
+- **Large lists (50k+)** are processed with the same integrity — correctness is never traded for speed; a big list simply takes longer.
 
 ### v1.5.7 — Bulletproof Collection (2026-06-11)
 

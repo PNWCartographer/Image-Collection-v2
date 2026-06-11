@@ -35,6 +35,17 @@ function detectFormat(filePath: string): AuditParseResult['format'] {
 
 // ── IMEI extraction ────────────────────────────────────────────────
 
+/**
+ * Normalize an IMEI cell so values written with separators still validate —
+ * e.g. "35-998765-432109-8" or "359 987 654 321 098" → "359987654321098".
+ * Clean 15-digit IMEIs (the common case) are returned unchanged. Scientific-
+ * notation values from number-formatted Excel cells are recovered separately,
+ * at parse time, from the raw cell value (see recoverScientificCells).
+ */
+function normalizeIMEI(raw: string): string {
+  return raw.trim().replace(/[\s-]/g, '')
+}
+
 function extractIMEIs(values: string[]): Pick<AuditParseResult, 'validIMEIs' | 'invalidEntries' | 'duplicateCount'> {
   const validIMEIs: string[] = []
   const seen = new Set<string>()
@@ -44,18 +55,19 @@ function extractIMEIs(values: string[]): Pick<AuditParseResult, 'validIMEIs' | '
   for (let i = 0; i < values.length; i++) {
     const raw = values[i].trim()
     if (!raw) continue
+    const imei = normalizeIMEI(raw)
 
-    if (!IMEI_REGEX.test(raw)) {
-      const reason = raw.length !== 15 ? 'not_15_digits' : 'non_numeric'
+    if (!IMEI_REGEX.test(imei)) {
+      const reason = imei.length !== 15 ? 'not_15_digits' : 'non_numeric'
       invalidEntries.push({ line: i + 1, value: raw, reason })
       continue
     }
 
-    if (seen.has(raw)) {
+    if (seen.has(imei)) {
       duplicateCount++
     } else {
-      seen.add(raw)
-      validIMEIs.push(raw)
+      seen.add(imei)
+      validIMEIs.push(imei)
     }
   }
 
@@ -99,6 +111,21 @@ function normalizeDate(raw: string, ambiguousOrder: DateOrder): string | null {
 
   // Strip time component if present (e.g., "5/14/26 11:57" → "5/14/26")
   const dateOnly = trimmed.split(/[\sT]+/)[0]
+
+  // Excel serial date — a date stored as a plain number (e.g. 46180 = 2026-06-04),
+  // which happens when a date cell is exported with a "General" number format.
+  // Range-bounded (~2009–2064) so plain integers in other columns aren't misread.
+  const serialMatch = dateOnly.match(/^(\d{5})(?:\.\d+)?$/)
+  if (serialMatch) {
+    const serial = parseInt(serialMatch[1], 10)
+    if (serial >= 40000 && serial <= 60000) {
+      const dt = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000)
+      const y = dt.getUTCFullYear()
+      if (y >= 2000 && y <= 2099) {
+        return `${y}${String(dt.getUTCMonth() + 1).padStart(2, '0')}${String(dt.getUTCDate()).padStart(2, '0')}`
+      }
+    }
+  }
 
   // YYYYMMDD (no separators)
   if (DATE_FOLDER_REGEX.test(dateOnly)) {
@@ -355,7 +382,7 @@ function buildHints(
   const dataRows = rows.slice(hasHeader ? 1 : 0)
 
   for (const row of dataRows) {
-    const imei = (row[imeiCol] || '').trim()
+    const imei = normalizeIMEI(row[imeiCol] || '')
     if (!IMEI_REGEX.test(imei)) continue
 
     const hint: AuditHint = {}
@@ -389,7 +416,10 @@ function buildHints(
     }
 
     if (hint.machine || hint.date || hint.model || hint.grade) {
-      if (!hints[imei]) {
+      // For duplicate IMEIs (re-tested devices) keep the MOST RECENT by date.
+      // Dates are YYYYMMDD so string comparison gives chronological order.
+      const existing = hints[imei]
+      if (!existing || (hint.date && (!existing.date || hint.date > existing.date))) {
         hints[imei] = hint
       }
     }
@@ -421,8 +451,7 @@ function findIMEIColumn(rows: string[][]): number {
   for (let col = 0; col < numCols; col++) {
     let count = 0
     for (const row of sampleRows) {
-      const val = (row[col] || '').trim()
-      if (IMEI_REGEX.test(val)) count++
+      if (IMEI_REGEX.test(normalizeIMEI(row[col] || ''))) count++
     }
     if (count > bestCount) {
       bestCount = count
@@ -439,8 +468,48 @@ interface ParsedRows {
   hasHeader: boolean
 }
 
+/**
+ * Decode a text-file buffer, honouring a UTF-16 (LE/BE) or UTF-8 byte-order
+ * mark. Without this a UTF-16-encoded CSV/TXT (e.g. Excel "Unicode Text" export)
+ * would be read as garbled UTF-8 and lose every row.
+ */
+function decodeTextBuffer(buf: Buffer): string {
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.toString('utf16le', 2)
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+    const swapped = Buffer.from(buf.subarray(2))
+    swapped.swap16()
+    return swapped.toString('utf16le')
+  }
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.toString('utf8', 3)
+  return buf.toString('utf8')
+}
+
+/**
+ * Replace cells Excel rendered in scientific notation (e.g. a 15-digit IMEI
+ * stored as a number → "3.50308E+14") with their full-precision raw integer
+ * value — recoverable because a 15-digit integer is exact in JS (< 2^53). Runs
+ * before column detection / IMEI extraction so those values aren't lost. Only
+ * cells that ARE scientific notation with a numeric raw value are touched.
+ */
+function recoverScientificCells(rows: string[][], rowsRaw: unknown[][]): void {
+  const SCI = /^\s*-?\d[.,]?\d*[eE][+-]?\d+\s*$/
+  for (let r = 0; r < rows.length; r++) {
+    const rawRow = rowsRaw[r]
+    if (!rawRow) continue
+    const row = rows[r]
+    for (let c = 0; c < row.length; c++) {
+      if (typeof row[c] === 'string' && SCI.test(row[c])) {
+        const rawVal = rawRow[c]
+        if (typeof rawVal === 'number' && Number.isFinite(rawVal)) {
+          row[c] = String(Math.round(rawVal))
+        }
+      }
+    }
+  }
+}
+
 async function parseCSV(filePath: string): Promise<ParsedRows> {
-  const content = await withReadTimeout(readFile(filePath, 'utf-8'))
+  const content = decodeTextBuffer(await withReadTimeout(readFile(filePath)))
 
   let records: string[][]
   try {
@@ -459,7 +528,7 @@ async function parseCSV(filePath: string): Promise<ParsedRows> {
 
   const col = findIMEIColumn(records)
   const firstVal = (records[0][col] || '').trim()
-  const hasHeader = !IMEI_REGEX.test(firstVal)
+  const hasHeader = !IMEI_REGEX.test(normalizeIMEI(firstVal))
 
   return { rows: records, imeiCol: col, hasHeader }
 }
@@ -469,23 +538,22 @@ async function parseExcel(filePath: string): Promise<ParsedRows> {
   const workbook = XLSX.read(buffer, { type: 'buffer' })
   const sheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[sheetName]
-  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    raw: false,
-    defval: ''
-  })
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' })
+  const rowsRaw: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' })
+  // Recover IMEIs (and other long IDs) Excel rendered in scientific notation.
+  recoverScientificCells(rows, rowsRaw)
 
   if (rows.length === 0) return { rows: [], imeiCol: 0, hasHeader: false }
 
   const col = findIMEIColumn(rows)
   const firstVal = (rows[0][col] || '').trim()
-  const hasHeader = !IMEI_REGEX.test(firstVal)
+  const hasHeader = !IMEI_REGEX.test(normalizeIMEI(firstVal))
 
   return { rows, imeiCol: col, hasHeader }
 }
 
 async function parseTXT(filePath: string): Promise<ParsedRows> {
-  const content = await withReadTimeout(readFile(filePath, 'utf-8'))
+  const content = decodeTextBuffer(await withReadTimeout(readFile(filePath)))
   const lines = content
     .split(/\r?\n/)
     .map((line) => line.trim())

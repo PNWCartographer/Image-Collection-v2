@@ -362,6 +362,23 @@ This milestone replaces the Milestone 15 SG-`*`.png-extraction mechanism after t
 
 ---
 
+## Milestone 17: Audit-Parser Data-Loss Prevention (v1.5.8)
+> **Gate**: A real audit list cannot silently lose IMEIs to formatting/encoding edge cases — every recoverable 15-digit IMEI is collected — while a clean production list parses **identically** to before (402 rows → 397 unique + 5 duplicates flagged).
+
+Hardens `AuditParser` against the ways a real-world spreadsheet can mangle a column without the operator noticing. Every change is additive and range/format-guarded so clean files are unaffected.
+
+| # | Task | Details |
+|---|------|---------|
+| 17.1 | Separator-tolerant IMEI normalization | `normalizeIMEI` strips spaces and dashes before validation (`35-998765-432109-8` / `3539 7910 2606 579` → `359987654321098`). Applied uniformly in `extractIMEIs`, `findIMEIColumn`, `buildHints`, and the `hasHeader` checks of all three parsers, so a formatted column is recovered instead of dropping every row. The de-dup set and duplicate flagging key off the normalized value. |
+| 17.2 | Scientific-notation recovery (Excel) | A 15-digit IMEI stored as a number renders as `3.50308E+14`. `parseExcel` now reads the sheet **twice** — formatted (`raw:false`) and raw (`raw:true`) — and `recoverScientificCells` replaces any cell that *looks* scientific with the raw integer value (`String(Math.round(rawVal))`), exact because 15 digits < 2^53. Only scientific-formatted numeric cells are touched. |
+| 17.3 | Excel serial-date interpretation | `normalizeDate` recognizes a bare serial day-number (e.g. `46180`) via the 1899-12-30 epoch using `Date.UTC` math, range-bounded to serials ~2009–2064 and a 2000–2099 result year so ordinary integers and the existing 8-digit `YYYYMMDD` are never misread. All prior formats (`YYYYMMDD`, `YYYY-MM-DD`, `M/D/YY`, with/without time) unchanged. The midnight end-date+1 safety (renderer `suggestedDateRange`) is preserved. |
+| 17.4 | Encoding-robust text read | `decodeTextBuffer` honours a UTF-16 LE/BE BOM (`0xFF 0xFE` / `0xFE 0xFF`, with `swap16` for BE) and a UTF-8 BOM; `parseCSV`/`parseTXT` now read the file as a Buffer and decode through it, so a "Unicode Text" CSV/TXT no longer parses as garbled bytes that match nothing. Defaults to UTF-8 for un-marked files. |
+| 17.5 | Duplicate → most-recent hint | `buildHints` keeps the hint (Machine/Date/Model/Grade) from the **latest** date for a repeated IMEI (`hint.date > existing.date`, lexical = chronological on `YYYYMMDD`), while `extractIMEIs` continues to flag every duplicate in the results. No behavioural change for unique IMEIs. |
+
+**Checkpoint**: The production `CollectMRImage-06102026.xlsx` still yields 402 rows / 397 unique / 5 duplicates with identical Machine/Date/Model/Grade hints. Synthetic rows confirm: a dashed IMEI, a scientific-notation IMEI (from a numeric cell), a serial-date cell, and a UTF-16-encoded CSV are each recovered; a duplicate IMEI's hint follows the most-recent date. `npm run typecheck` and lint pass.
+
+---
+
 ## Milestone Dependency Map
 
 ```
