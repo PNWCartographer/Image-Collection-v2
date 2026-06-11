@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.3 — MR reliability & diagnostics.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.4 — MR reliability & diagnostics.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -366,6 +366,13 @@ NAS_ROOT/                              (e.g. Z:\)
 ---
 
 ## Version History
+
+### v1.5.4 — Exact-Path MR Collection (2026-06-11)
+
+A NAS check revealed the actual layout: MR ("wrong color") devices have a folder named **exactly by the IMEI** — `Machine/{date}/{IMEI}/` with **no `_index` suffix** — holding a **timestamp-named `.png`** (not `SG-*.png`). Earlier versions searched for `{IMEI}_*` + `SG-*.png`, neither of which exists for these devices, so every lookup returned "File Not Found".
+
+- **Exact-path MR collection** — MR mode now opens `Machine/{date}/{IMEI}/` **directly** (the path is fully known from the audit's IMEI + Machine + Date) and takes the `.png` inside. No wildcard, no `{IMEI}_*`, and — critically — **no listing of the giant parent date folder**, so it's instant regardless of folder size and immune to the concurrency saturation that timed out earlier builds.
+- The `.png` is taken whatever its name (timestamp-named for these devices, `SG-*` for full-scan folders).
 
 ### v1.5.3 — Server-Side Folder Lookup (2026-06-11)
 

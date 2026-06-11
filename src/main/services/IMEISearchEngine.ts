@@ -11,6 +11,8 @@ const execFileAsync = promisify(execFile)
 
 /** Concurrency for server-side `dir` lookups — modest, to avoid a process storm. */
 const DIR_LOOKUP_CONCURRENCY = 16
+/** Concurrency for direct per-IMEI folder reads — exact paths to tiny folders. */
+const MR_DIRECT_CONCURRENCY = 16
 /** Timeout for a single server-side `dir` lookup (server-side filter is fast). */
 const DIR_TIMEOUT_MS = 30_000
 /** Matches an IMEI_index folder name: 15 digits, underscore, integer. */
@@ -517,6 +519,98 @@ async function searchBroad(
   return foldersScanned.value
 }
 
+// ── MR direct collection ───────────────────────────────────────────
+
+/**
+ * MR collection via exact-path access. Each wrong-color/MR device has a folder
+ * named exactly by its IMEI (no scan-index suffix) at Machine/{date}/{IMEI}/,
+ * containing a single image .png (timestamp-named, not SG-*). We open that exact
+ * folder directly — this never enumerates the (enormous) parent date folder, so
+ * it is fast regardless of folder size and immune to the concurrency saturation
+ * that made directory listings time out.
+ */
+async function searchMRDirect(
+  request: SearchRequest,
+  ctx: SearchContext,
+  onProgress: (progress: SearchProgress) => void,
+  onMatches: (matches: SearchMatch[]) => void
+): Promise<SearchResult> {
+  const { token, matches, foundIMEIs, logger } = ctx
+  const hints = request.hints!
+  const selectedSet = new Set(request.selectedFolders)
+
+  const targets: { imei: string; machine: string; date: string }[] = []
+  let droppedNoHint = 0
+  let droppedMachine = 0
+  let droppedDate = 0
+  for (const imei of request.imeis) {
+    const hint = hints[imei]
+    if (!hint?.machine || !hint?.date) { droppedNoHint++; continue }
+    if (!selectedSet.has(hint.machine)) { droppedMachine++; continue }
+    if (!isDateInRange(hint.date, request)) { droppedDate++; continue }
+    targets.push({ imei, machine: hint.machine, date: hint.date })
+  }
+  logger.info(`MR direct: opening ${targets.length} device folders (dropped: noHint=${droppedNoHint}, machineNotSelected=${droppedMachine}, dateOutOfRange=${droppedDate})`)
+
+  const total = targets.length
+  let done = 0
+
+  await pooled(targets, MR_DIRECT_CONCURRENCY, token, async (t) => {
+    if (token.cancelled) return
+    const folderPath = join(request.rootPath, t.machine, t.date, t.imei)
+    const started = Date.now()
+    try {
+      const files = await readdirWithTimeout(folderPath, { withFileTypes: true })
+      const png = files.find((f) => f.isFile() && f.name.toLowerCase().endsWith('.png'))
+      if (png) {
+        const match: SearchMatch = {
+          imei: t.imei,
+          machineName: t.machine,
+          date: t.date,
+          scanIndex: 0,
+          folderName: png.name,
+          sourcePath: join(folderPath, png.name),
+          bmpCount: 0,
+          jpegCount: 0,
+          otherCount: 1,
+          totalFiles: 1,
+          matchType: 'mr-pass',
+          mrFolder: undefined,
+          modelName: undefined
+        }
+        matches.push(match)
+        foundIMEIs.add(t.imei)
+        onMatches([match])
+      } else {
+        // Folder exists but holds no .png image
+        ctx.noMRImage++
+      }
+    } catch (err) {
+      // ENOENT just means this device has no folder under this machine/date → missing.
+      if (!isBenignDirError(err)) {
+        ctx.scanErrors++
+        ctx.scanErrorDetails.push(`${t.machine}/${t.date}/${t.imei} (${Date.now() - started}ms): ${errorMessage(err)}`)
+      }
+    }
+
+    done++
+    const now = Date.now()
+    if (now - ctx.startTime > PROGRESS_THROTTLE_MS * done || done === total) {
+      onProgress({
+        phase: 'scanning',
+        percent: total > 0 ? (done / total) * 100 : 0,
+        currentMachine: t.machine,
+        currentDate: t.date,
+        matchesSoFar: matches.length,
+        foldersScanned: done,
+        totalFolders: total
+      })
+    }
+  })
+
+  return buildResult(ctx, request.imeis, total, onProgress)
+}
+
 // ── Main search dispatcher ─────────────────────────────────────────
 
 export async function searchIMEIs(
@@ -533,7 +627,13 @@ export async function searchIMEIs(
 
   logSearchHeader(ctx.logger, request, mrMode ? 'MR' : 'standard')
   if (mrMode) {
-    ctx.logger.info('MR collection: locating each IMEI folder and extracting its SG-*.png (ModelRecogImages folders are NOT scanned — too large to enumerate)')
+    ctx.logger.info('MR collection: opening each device folder Machine/{date}/{IMEI}/ by exact path and taking its image (no directory listing, no ModelRecogImages scan)')
+  }
+
+  // MR mode with hints: open each device's folder by its exact path — instant,
+  // no enumeration of the (huge) date folder, no wildcard, no concurrency storm.
+  if (mrMode && request.smartSearch && request.hints && Object.keys(request.hints).length > 0) {
+    return searchMRDirect(request, ctx, onProgress, onMatches)
   }
 
   // Smart Search: targeted lookups when audit file had machine + date columns
