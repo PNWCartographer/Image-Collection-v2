@@ -1,9 +1,20 @@
 import { readdir } from 'fs/promises'
-import { join } from 'path'
+import { join, basename } from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import type { SearchRequest, SearchMatch, SearchProgress, SearchResult, AuditHint } from '../../shared/types'
 import { PROGRESS_THROTTLE_MS, IMEI_REGEX, DATE_FOLDER_REGEX } from '../../shared/utils'
 import { pooled, type CancelToken } from '../../shared/pool'
 import { createSearchLogger, RotatingLogger } from './Logger'
+
+const execFileAsync = promisify(execFile)
+
+/** Concurrency for server-side `dir` lookups — modest, to avoid a process storm. */
+const DIR_LOOKUP_CONCURRENCY = 16
+/** Timeout for a single server-side `dir` lookup (server-side filter is fast). */
+const DIR_TIMEOUT_MS = 30_000
+/** Matches an IMEI_index folder name: 15 digits, underscore, integer. */
+const IMEI_FOLDER_PATTERN = /^(\d{15})_(\d+)$/
 const MR_ROOT = 'modelrecogimages'
 const SKIP_FOLDERS = new Set([
   '#recycle', '$recycle.bin', MR_ROOT, 'version_control'
@@ -42,6 +53,58 @@ async function readdirNamesWithTimeout(dirPath: string): Promise<string[]> {
       setTimeout(() => reject(new Error(`readdir timed out after ${READDIR_TIMEOUT_MS}ms: ${dirPath}`)), READDIR_TIMEOUT_MS)
     )
   ])
+}
+
+/**
+ * Find IMEI subfolders in a date folder by SERVER-SIDE filtered listing:
+ * `cmd /c dir /b /a:d {datePath}\{IMEI}_*`. Over SMB the wildcard is applied on
+ * the NAS, so only matching folders are returned WITHOUT enumerating the date
+ * folder — which can hold many thousands of IMEI subfolders and otherwise times
+ * out on a plain readdir. Returns matched folder names (e.g. "350...534_539").
+ *
+ * Crucially this runs in a child process, so a slow NAS does not pin Node's fs
+ * thread pool (the orphaned readdir problem that also made the UI lag).
+ */
+async function findMatchingIMEIFolders(datePath: string, imeis: string[]): Promise<string[]> {
+  if (imeis.length === 0) return []
+
+  if (process.platform !== 'win32') {
+    // Non-Windows fallback (dev/test only — the app ships Windows-only): full listing.
+    const names = await readdirNamesWithTimeout(datePath)
+    const want = new Set(imeis)
+    return names.filter((n) => {
+      const m = IMEI_FOLDER_PATTERN.exec(n)
+      return !!m && want.has(m[1])
+    })
+  }
+
+  // IMEIs are validated 15-digit numbers, so the patterns are injection-safe.
+  // Batch the patterns to stay well under the ~8191-char command-line limit.
+  const BATCH = 60
+  const out: string[] = []
+  for (let i = 0; i < imeis.length; i += BATCH) {
+    const patterns = imeis.slice(i, i + BATCH).map((im) => join(datePath, `${im}_*`))
+    let stdout = ''
+    try {
+      const res = await execFileAsync('cmd', ['/d', '/c', 'dir', '/b', '/a:d', ...patterns], {
+        timeout: DIR_TIMEOUT_MS,
+        windowsHide: true,
+        maxBuffer: 16 * 1024 * 1024
+      })
+      stdout = res.stdout
+    } catch (err) {
+      const e = err as { stdout?: string; killed?: boolean }
+      if (e.killed) throw new Error(`dir timed out after ${DIR_TIMEOUT_MS}ms: ${datePath}`)
+      // `dir` exits non-zero when some/all patterns match nothing — any matches are
+      // still on stdout, so read them rather than treating this as an error.
+      stdout = typeof e.stdout === 'string' ? e.stdout : ''
+    }
+    for (const line of stdout.split(/\r?\n/)) {
+      const name = basename(line.trim())
+      if (IMEI_FOLDER_PATTERN.test(name)) out.push(name)
+    }
+  }
+  return out
 }
 
 /**
@@ -327,7 +390,7 @@ async function searchTargeted(
     })
   }
 
-  await pooled(lookupEntries, CONCURRENCY, token, async ([key, imeisInFolder]) => {
+  await pooled(lookupEntries, DIR_LOOKUP_CONCURRENCY, token, async ([key, imeisInFolder]) => {
     if (token.cancelled) return
 
     const [machine, dateStr] = key.split('/')
@@ -335,20 +398,29 @@ async function searchTargeted(
 
     const t0 = Date.now()
     try {
-      const localImeiSet = new Set(imeisInFolder)
-      const { pending, filteredCount, entryCount } = await scanDateFolder(datePath, localImeiSet, request.scanIndexFilter)
-      ctx.scanIndexFiltered += filteredCount
+      // Server-side filtered lookup — finds each IMEI's folder without enumerating
+      // the (potentially enormous) date folder. No broad-scan fallback on error:
+      // a failure here just leaves those IMEIs missing, with the error logged.
+      const matchedNames = await findMatchingIMEIFolders(datePath, imeisInFolder)
+      const want = new Set(imeisInFolder)
+      const pending: PendingMatch[] = []
+      for (const name of matchedNames) {
+        const parsed = parseIMEIFolder(name)
+        if (!parsed || !want.has(parsed.imei)) continue
+        if (request.scanIndexFilter === 'first_only' && parsed.scanIndex !== 1) {
+          ctx.scanIndexFiltered++
+          continue
+        }
+        pending.push({ imei: parsed.imei, scanIndex: parsed.scanIndex, folderName: name, folderPath: join(datePath, name) })
+      }
       const dt = Date.now() - t0
-      if (dt > 3000 || entryCount > 2000) {
-        logger.info(`  ${machine}/${dateStr}: ${entryCount} entries, ${pending.length} matched, ${dt}ms`)
+      if (dt > 3000) {
+        logger.info(`  ${machine}/${dateStr}: ${matchedNames.length} matched, ${dt}ms`)
       }
       if (pending.length > 0 && !token.cancelled) {
         await buildMatchBatch(pending, machine, dateStr, ctx, onMatches)
       }
     } catch (err) {
-      // Date folder couldn't be read (e.g. timeout on a very large folder).
-      // Record it and leave those IMEIs missing — do NOT fall back to a
-      // full-history broad scan, which would read hundreds more folders and hang.
       if (!isBenignDirError(err)) {
         ctx.scanErrors++
         ctx.scanErrorDetails.push(`${machine}/${dateStr} (${Date.now() - t0}ms): ${errorMessage(err)}`)

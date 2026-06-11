@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.2 — MR reliability & diagnostics.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.3 — MR reliability & diagnostics.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -367,13 +367,13 @@ NAS_ROOT/                              (e.g. Z:\)
 
 ## Version History
 
-### v1.5.2 — Search Performance & Reliable Logs (2026-06-11)
+### v1.5.3 — Server-Side Folder Lookup (2026-06-11)
 
-Follow-up to v1.5.1 after a search hung at 100% with an empty log:
+The production `Machine/{date}/` folders hold so many IMEI subfolders that even *listing* one over SMB times out (15s) — which is why searches returned 0 with every folder erroring. Fixed by not listing them at all:
 
-- **No more hang on large date folders** — a timeout reading one `Machine/{date}/` folder no longer triggers a full-history broad scan (which read hundreds more folders and hung for minutes). The affected IMEIs are simply reported missing, with the timeout recorded in the log.
-- **Names-only directory listing** — folder reads no longer stat every entry, which is dramatically faster on date folders that hold thousands of IMEI subfolders.
-- **Search logs are now written synchronously** — every line hits disk immediately, so the log is always readable even if a search hangs or is cancelled (the previous buffered log looked empty mid-run). Slow/large folders are now timed and logged.
+- **Server-side IMEI lookup** — for each device the tool now asks the NAS to return just the matching `{IMEI}_*` folder (`dir /b /a:d {IMEI}_*`). The wildcard is applied on the NAS, so it finds the folder **without enumerating the directory** — fast no matter how many subfolders it holds. It runs in a child process, so a slow NAS no longer pins Node's file thread pool (which was also causing the post-search UI lag, including a laggy "View Log").
+- **No hang on read errors** — a folder-read failure no longer triggers a full-history broad scan; the affected IMEIs are reported missing with the error logged.
+- **Synchronous search logs** — every line hits disk immediately, so the log is always readable even mid-search or after a cancel (the previous buffered log looked empty), with slow lookups timed.
 
 ### v1.5.1 — MR Reliability & Diagnostics (2026-06-10)
 
