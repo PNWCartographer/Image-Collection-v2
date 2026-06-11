@@ -29,7 +29,7 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 | **Parallel NAS search** | 48 concurrent folder reads, tuned for RS3617RPxs (12-drive RAID 5, 1 Gbps) |
 | **Parallel export** | 8 folders x 4 files = 32 concurrent copies, saturates the 1 Gbps pipe |
 | **7 organization modes** | Flat, By Machine, By Date, Machine-Date, Date-Machine, By IMEI, By Model |
-| **MR PASS / FAIL collection** | Collect Model Recognition images from `ModelRecogImages/` by toggle |
+| **MR PASS / FAIL collection** | Collect each device's MR image (the `SG-*.png` inside its IMEI folder) by toggle |
 | **AI Images Only** | Export only the `FD/` subfolder (AI detection images) from matched IMEI folders |
 | **Multi-source manager** | Save and switch between multiple NAS roots; each source remembers its own folder toggles |
 | **Search history** | Last 5 searches stored with full parameter and result summaries |
@@ -169,7 +169,7 @@ If your audit data only contains IMEIs (no Machine or Date columns), the tool fa
 | **Copy** (default) | Duplicates matched folders to the destination. Source data is unchanged. |
 | **Move** | Transfers folders and **deletes the source** after copy. A confirmation dialog warns before enabling. On next launch, action always resets to Copy for safety. |
 
-> Move mode does **not** apply to MR image exports — MR images are always copied to protect shared `ModelRecogImages/` directories.
+> Move mode does **not** apply to MR image collection — only the `SG-*.png` is copied (never moved), so each device's IMEI folder stays intact.
 
 ### Image Type
 
