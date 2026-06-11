@@ -54,7 +54,7 @@
 .tableWrap .th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .table {
@@ -72,7 +72,9 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-bottom: 1px solid var(--border-glass);
-  background: var(--bg-glass);
+  /* Opaque fill so scrolling rows pass BEHIND the sticky header instead of
+     ghosting through it (--bg-glass is translucent). */
+  background: var(--bg-option);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;

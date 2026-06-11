@@ -2,7 +2,7 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | 简体中文
 
-通过 IMEI 号码从 NAS 共享文件夹批量收集设备图像的桌面工具。使用 Electron、React 及 Liquid Glass UI 主题开发。**v1.5.3 — MR 可靠性与诊断。**
+通过 IMEI 号码从 NAS 共享文件夹批量收集设备图像的桌面工具。使用 Electron、React 及 Liquid Glass UI 主题开发。**v1.5.6 — 审计驱动的 MR 收集。**
 
 操作人员导入审计清单 — 建议包含 IMEI、机器及日期列以获得最快结果 — 选择要搜索的机器文件夹，并以可配置的整理方式将匹配的图像文件夹导出至本地目标位置。
 

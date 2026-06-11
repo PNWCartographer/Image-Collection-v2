@@ -539,7 +539,7 @@ async function searchMRDirect(
   const hints = request.hints!
   const selectedSet = new Set(request.selectedFolders)
 
-  const targets: { imei: string; machine: string; date: string }[] = []
+  const targets: { imei: string; machine: string; date: string; model?: string }[] = []
   let droppedNoHint = 0
   let droppedMachine = 0
   let droppedDate = 0
@@ -548,7 +548,7 @@ async function searchMRDirect(
     if (!hint?.machine || !hint?.date) { droppedNoHint++; continue }
     if (!selectedSet.has(hint.machine)) { droppedMachine++; continue }
     if (!isDateInRange(hint.date, request)) { droppedDate++; continue }
-    targets.push({ imei, machine: hint.machine, date: hint.date })
+    targets.push({ imei, machine: hint.machine, date: hint.date, model: hint.model })
   }
   logger.info(`MR direct: opening ${targets.length} device folders (dropped: noHint=${droppedNoHint}, machineNotSelected=${droppedMachine}, dateOutOfRange=${droppedDate})`)
 
@@ -575,8 +575,8 @@ async function searchMRDirect(
           otherCount: 1,
           totalFiles: 1,
           matchType: 'mr-pass',
-          mrFolder: undefined,
-          modelName: undefined
+          mrFolder: t.model,
+          modelName: t.model
         }
         matches.push(match)
         foundIMEIs.add(t.imei)

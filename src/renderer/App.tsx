@@ -285,6 +285,9 @@ function App(): JSX.Element {
 
     try {
       const useSmartSearch = smartSearch && !!auditResult.hints && Object.keys(auditResult.hints).length > 0
+      // Idiot-proofing: an MR/fail list (grade column detected) auto-enables MR
+      // collection regardless of the toggles, so the operator always gets their images.
+      const forceMR = !!auditResult.isMRAudit
       const result = await window.electronAPI.searchIMEIs({
         rootPath,
         selectedFolders,
@@ -292,8 +295,8 @@ function App(): JSX.Element {
         dateStart: dr.dateStart || undefined,
         dateEnd: dr.dateEnd || undefined,
         scanIndexFilter: settings.scanIndex,
-        mrPass: settings.mrPass || undefined,
-        mrFail: settings.mrFail || undefined,
+        mrPass: settings.mrPass || forceMR || undefined,
+        mrFail: settings.mrFail || forceMR || undefined,
         hints: useSmartSearch ? auditResult.hints : undefined,
         smartSearch: useSmartSearch
       })
@@ -496,6 +499,14 @@ function App(): JSX.Element {
             onSmartSearchChange={setSmartSearch}
           />
           <SettingsPanel lang={lang} onSettingsChange={handleSettingsChange} />
+          {auditResult?.isMRAudit && (
+            <div className={styles.mrBanner}>
+              {t(lang,
+                '✓ MR collection list detected — every listed device’s MR image will be collected automatically. You don’t need to set MR PASS / MR FAIL.',
+                '✓ 偵測到 MR 收集清單 — 將自動收集清單中每部裝置的 MR 影像。您不需要設定 MR PASS / MR FAIL。',
+                '✓ 检测到 MR 收集列表 — 将自动收集列表中每台设备的 MR 图像。您不需要设置 MR PASS / MR FAIL。')}
+            </div>
+          )}
           <ResultsPanel lang={lang} result={displayResult} searching={searching} />
           <ProgressBar
             percent={progressPercent}

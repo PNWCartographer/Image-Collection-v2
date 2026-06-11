@@ -13,6 +13,8 @@ export interface FolderScanResult {
 export interface AuditHint {
   machine?: string   // Normalized to NAS folder name, e.g. "M8", "M10"
   date?: string      // Normalized to YYYYMMDD format
+  model?: string     // Device model, color stripped, e.g. "Apple-iPhone11" (for Machine→Model)
+  grade?: string     // Raw grade/fail value, e.g. "Wrong Color" (marks an MR audit)
 }
 
 /** Metadata about hint column detection quality. */
@@ -39,6 +41,7 @@ export interface AuditParseResult {
   duplicateCount: number
   hints?: Record<string, AuditHint>   // IMEI -> hint (only present when columns detected)
   hintMeta?: HintDetectionMeta        // Detection metadata
+  isMRAudit?: boolean                 // True when a grade/fail column was detected (auto-enables MR collection)
 }
 
 export interface SearchRequest {

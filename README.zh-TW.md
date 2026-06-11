@@ -2,7 +2,7 @@
 
 [English](README.md) | 繁體中文 | [简体中文](README.zh-CN.md)
 
-透過 IMEI 號碼從 NAS 共享資料夾批次收集裝置影像的桌面工具。使用 Electron、React 及 Liquid Glass UI 主題開發。**v1.5.3 — MR 可靠性與診斷。**
+透過 IMEI 號碼從 NAS 共享資料夾批次收集裝置影像的桌面工具。使用 Electron、React 及 Liquid Glass UI 主題開發。**v1.5.6 — 稽核驅動的 MR 收集。**
 
 操作人員匯入稽核清單 — 建議包含 IMEI、機器及日期欄位以獲得最快結果 — 選擇要搜尋的機器資料夾，並以可設定的整理方式將匹配的影像資料夾匯出至本機目標位置。
 

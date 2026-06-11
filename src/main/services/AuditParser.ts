@@ -206,6 +206,20 @@ function describeDateFormat(values: string[], order: DateOrder): string | null {
 
 // ── Column detection ───────────────────────────────────────────────
 
+/** Device-grade vocabulary — used to recognise an MR/CMC "fail list" audit. */
+const GRADE_WORDS = /\b(wrong|pass|fail|error|mismatch|defect|reject|good)\b/i
+
+/**
+ * Reduce a "Brand-Model-Color" label (e.g. "Apple-iPhone11-Purple") to just the
+ * device model ("Apple-iPhone11") by dropping the trailing color segment. Used
+ * for Machine→Model organization of MR collection audits.
+ */
+function deviceModel(raw: string): string {
+  const t = raw.trim()
+  const parts = t.split('-')
+  return parts.length >= 3 ? parts.slice(0, -1).join('-') : t
+}
+
 interface ColumnDetection {
   machineCol: number | null
   machineHeader: string | null
@@ -213,13 +227,19 @@ interface ColumnDetection {
   dateHeader: string | null
   dateOrder: DateOrder
   dateFormatGuess: string | null
+  modelCol: number | null
+  modelHeader: string | null
+  gradeCol: number | null
+  gradeHeader: string | null
 }
 
 function detectHintColumns(rows: string[][], imeiCol: number, hasHeader: boolean): ColumnDetection {
   const result: ColumnDetection = {
     machineCol: null, machineHeader: null,
     dateCol: null, dateHeader: null,
-    dateOrder: 'MDY', dateFormatGuess: null
+    dateOrder: 'MDY', dateFormatGuess: null,
+    modelCol: null, modelHeader: null,
+    gradeCol: null, gradeHeader: null
   }
 
   if (rows.length === 0) return result
@@ -270,6 +290,49 @@ function detectHintColumns(rows: string[][], imeiCol: number, hasHeader: boolean
     result.dateFormatGuess = describeDateFormat(allDateValues, result.dateOrder)
   }
 
+  // ── Model + Grade columns ──
+  // A grade column (e.g. "Grade-D2C" = "Wrong Color") marks this as an MR
+  // collection audit (auto-enables MR mode). A model column ("Model") drives
+  // Machine→Model organization. Both are header-driven; grade falls back to a
+  // content check so a "fail list" without a grade header is still recognised.
+  const headerOf = (col: number): string | null =>
+    hasHeader ? ((rows[0][col] || '').trim() || null) : null
+
+  for (let col = 0; col < numCols; col++) {
+    if (col === imeiCol || col === result.machineCol || col === result.dateCol) continue
+    const h = hasHeader ? (rows[0][col] || '').trim().toLowerCase() : ''
+    if (result.modelCol === null && h.includes('model')) {
+      result.modelCol = col
+      result.modelHeader = headerOf(col)
+    }
+    if (result.gradeCol === null && h.includes('grade')) {
+      result.gradeCol = col
+      result.gradeHeader = headerOf(col)
+    }
+  }
+
+  // Content fallback for grade when there's no "grade" header
+  if (result.gradeCol === null) {
+    let bestGradeCol = -1
+    let bestGradeCount = 0
+    for (let col = 0; col < numCols; col++) {
+      if (col === imeiCol || col === result.machineCol || col === result.dateCol || col === result.modelCol) continue
+      let gradeCount = 0
+      for (const row of sampleRows) {
+        const val = (row[col] || '').trim()
+        if (val && GRADE_WORDS.test(val)) gradeCount++
+      }
+      if (gradeCount > bestGradeCount) {
+        bestGradeCount = gradeCount
+        bestGradeCol = col
+      }
+    }
+    if (bestGradeCount >= threshold && bestGradeCol !== -1) {
+      result.gradeCol = bestGradeCol
+      result.gradeHeader = headerOf(bestGradeCol)
+    }
+  }
+
   return result
 }
 
@@ -315,7 +378,17 @@ function buildHints(
       }
     }
 
-    if (hint.machine || hint.date) {
+    if (detection.modelCol !== null) {
+      const rawModel = (row[detection.modelCol] || '').trim()
+      if (rawModel) hint.model = deviceModel(rawModel)
+    }
+
+    if (detection.gradeCol !== null) {
+      const rawGrade = (row[detection.gradeCol] || '').trim()
+      if (rawGrade) hint.grade = rawGrade
+    }
+
+    if (hint.machine || hint.date || hint.model || hint.grade) {
       if (!hints[imei]) {
         hints[imei] = hint
       }
@@ -448,9 +521,11 @@ export async function parseAuditFile(filePath: string): Promise<AuditParseResult
   const rawValues = dataRows.map((row) => (row[parsed.imeiCol] || '').trim())
   const { validIMEIs, invalidEntries, duplicateCount } = extractIMEIs(rawValues)
 
-  // Detect hint columns (machine, date) — only for multi-column formats
+  // Detect hint columns (machine, date, model, grade) — only for multi-column formats
   const detection = detectHintColumns(parsed.rows, parsed.imeiCol, parsed.hasHeader)
-  const hasHints = detection.machineCol !== null || detection.dateCol !== null
+  const hasHints =
+    detection.machineCol !== null || detection.dateCol !== null ||
+    detection.modelCol !== null || detection.gradeCol !== null
 
   let hints: Record<string, AuditHint> | undefined
   let hintMeta: HintDetectionMeta | undefined
@@ -461,6 +536,10 @@ export async function parseAuditFile(filePath: string): Promise<AuditParseResult
     hintMeta = hintResult.meta
   }
 
+  // A detected grade column means this is an MR-collection "fail list" (e.g.
+  // Wrong Color) — the app uses this to auto-enable MR collection.
+  const isMRAudit = detection.gradeCol !== null
+
   return {
     format,
     filePath,
@@ -470,6 +549,7 @@ export async function parseAuditFile(filePath: string): Promise<AuditParseResult
     invalidEntries,
     duplicateCount,
     hints,
-    hintMeta
+    hintMeta,
+    isMRAudit
   }
 }

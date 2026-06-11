@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.4 — MR reliability & diagnostics.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.6 — audit-driven MR collection.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -366,6 +366,18 @@ NAS_ROOT/                              (e.g. Z:\)
 ---
 
 ## Version History
+
+### v1.5.6 — Sticky Header Fix (2026-06-11)
+
+- **Results table header no longer ghosts** — the sticky column header (IMEI/Machine/Date/Index/Files) had a translucent background, so scrolling rows showed through it. It's now opaque, so rows pass cleanly behind it. Applies to both the matches and missing-IMEIs tables; the other scroll areas (folder grid, settings dropdown) were audited and already correct.
+
+### v1.5.5 — Audit-Driven MR Collection (2026-06-11)
+
+Makes MR collection idiot-proof and adds model grouping, driven entirely by the audit file:
+
+- **Auto-detect MR audits** — when the audit has a grade/fail column (e.g. `Grade-D2C` = "Wrong Color"), the tool recognizes it as an MR collection list and **enables MR collection automatically**, regardless of the MR PASS / MR FAIL toggles. A banner confirms it. The operator no longer needs to know which toggle to set.
+- **Machine → Model (and By Model) now work for these lists** — the device model is parsed from the audit's `Model` column (color stripped, e.g. `Apple-iPhone11-Purple` → `Apple-iPhone11`) and used for organization, since the lean MR folders carry no model in the filename. Export lands at `dest/M12/Apple-iPhone11/{IMEI}/…`.
+- The per-IMEI **grade** is captured too, laying groundwork for tailoring future fail types.
 
 ### v1.5.4 — Exact-Path MR Collection (2026-06-11)
 
