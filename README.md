@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.8 — hardened audit parsing.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.9 — audit cleanup & MR unification.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -373,6 +373,16 @@ NAS_ROOT/                              (e.g. Z:\)
 ---
 
 ## Version History
+
+### v1.5.9 — Audit Cleanup & MR Unification (2026-06-11)
+
+A read-only multi-agent audit drove a round of dead-code removal, one architectural simplification, and defensive parser hardening. No change to how a valid audit collects today — the production list still parses identically (402 rows → 397 unique, 5 duplicates) and exact-path MR collection is untouched.
+
+- **Unified MR collection on the exact-path engine.** The superseded `SG-*.png` broad-scan MR branch — a second, divergent implementation that only found Type-A `{IMEI}_index` folders and **missed** the bare-`{IMEI}` timestamp-`.png` wrong-color devices — has been retired. MR now always opens each device's folder by exact path, and (new) does so whenever the audit carries Machine + Date, **regardless of the Smart Search toggle**. A list with neither column now shows a clear notice instead of a slow scan that can't find MR images.
+- **Removed dead code** surfaced by the audit: an unused `expandDateRange` helper, an unused `ExportLogger` value alias, a never-read `entryCount` field, a dead `lastDestination` setting default, and the write-only per-IMEI `grade` hint (the MR-audit signal is still derived from the grade column, just no longer stored per device).
+- **Parser data-integrity hardening:** Excel files now parse the worksheet with the most IMEIs (instead of blindly the first), so a cover/notes sheet can't hide the data; header detection also recognizes column keywords, so a numeric-looking header can't be mistaken for a data row; and an undecidable M/D vs D/M date order is flagged as "assumed" in the audit summary.
+- **Robustness:** a failed "Save Missing IMEIs" write now surfaces an error instead of failing silently.
+- **Accuracy:** code comments, type docs, and the MR PASS / MR FAIL tooltips were corrected to describe the current exact-path behavior (several still referenced the old `SG-*.png` approach).
 
 ### v1.5.8 — Hardened Audit Parsing (2026-06-11)
 

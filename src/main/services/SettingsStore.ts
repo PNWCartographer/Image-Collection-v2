@@ -5,7 +5,6 @@ const store = new Store({
   defaults: {
     sources: [],
     activeSourceId: '',
-    lastDestination: '',
     theme: 'dark',
     lang: 'en'
   }

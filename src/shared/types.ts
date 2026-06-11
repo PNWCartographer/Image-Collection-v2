@@ -14,7 +14,6 @@ export interface AuditHint {
   machine?: string   // Normalized to NAS folder name, e.g. "M8", "M10"
   date?: string      // Normalized to YYYYMMDD format
   model?: string     // Device model, color stripped, e.g. "Apple-iPhone11" (for Machine→Model)
-  grade?: string     // Raw grade/fail value, e.g. "Wrong Color" (marks an MR audit)
 }
 
 /** Metadata about hint column detection quality. */
@@ -68,11 +67,11 @@ export interface SearchMatch {
   jpegCount: number
   otherCount: number
   totalFiles: number
-  /** Set only for ModelRecogImages matches. Undefined for standard IMEI folder matches. */
+  /** Set only for MR (Model Recognition) matches. Undefined for standard IMEI folder matches. */
   matchType?: 'mr-pass' | 'mr-fail'
-  /** Brand-Model folder name (MR PASS) or 'Error-Error' (MR FAIL) */
+  /** Model label for an MR match — from the audit hint's model (color stripped). */
   mrFolder?: string
-  /** Brand-Model extracted from SG-*.png filename (e.g. "Apple-iPhone13Pro"). */
+  /** Brand-Model for organization — from the audit hint (MR) or the SG-*.png model-recognition filename (standard scan). */
   modelName?: string
 }
 
@@ -99,6 +98,8 @@ export interface SearchResult {
   elapsedMs: number
   /** Path to the diagnostic log written for this search ('' if logging unavailable). */
   logPath: string
+  /** Optional notice code surfaced to the operator, e.g. 'mr-no-hints'. */
+  notice?: string
 }
 
 export interface ExportRequest {

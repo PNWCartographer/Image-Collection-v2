@@ -379,6 +379,23 @@ Hardens `AuditParser` against the ways a real-world spreadsheet can mangle a col
 
 ---
 
+## Milestone 18: Post-Audit Cleanup & MR Unification (v1.5.9)
+> **Gate**: A read-only multi-agent audit's confirmed findings are resolved **without changing how a valid audit collects** — the production list still parses 402/397/5 and exact-path MR collection is unchanged — while a divergent legacy MR path and several dead-code items are removed.
+
+Driven by a 6-dimension read-only audit (dead/zombie code, search engine, parser, export/FS, IPC/types, renderer) with adversarial verification of every removable finding.
+
+| # | Task | Details |
+|---|------|---------|
+| 18.1 | Retire the legacy SG-`*`.png MR branch | The standard-scan MR emission in `buildMatchBatch` (the superseded second MR implementation — Type-A `{IMEI}_index` + `SG-*.png` only, reachable when MR ran without hints) is removed, along with `SearchContext.mrMode` and the `FileCountResult.mrImageName/mrImagePath` fields. The live `modelName` extraction (`extractModelFromMRFilename`, used for By-Model / Machine→Model organization of standard folders) is **kept**. `collectMRDirect` (the exact-path engine) is untouched. |
+| 18.2 | MR routing is toggle-independent | The dispatcher routes MR to exact-path (`searchMRDirect`) whenever the audit carries hints, regardless of the Smart Search toggle (the renderer now sends hints for an MR audit even with Smart Search off). MR without any hints surfaces an `mr-no-hints` notice (`SearchResult.notice`) instead of a broad scan that cannot locate MR images. |
+| 18.3 | Dead-code removal | Removed: `expandDateRange` (utils), the `ExportLogger` value alias (Logger — the type alias is kept), `scanDateFolder().entryCount`, the `lastDestination` electron-store default, and the write-only `AuditHint.grade` field (`isMRAudit` still derives from grade-column detection). |
+| 18.4 | Parser data-integrity hardening | `parseExcel` picks the worksheet with the most IMEIs (`pickBestSheet`) so a cover/notes sheet can't hide the data; header detection adds a keyword check (`looksLikeHeaderRow`) so a numeric-looking header can't be misread as data; an undecidable M/D vs D/M order is flagged "assumed" in `dateFormatGuess`. The MR filename-collision risk is eliminated structurally by 18.1 (one match per IMEI, IMEI always in the path). |
+| 18.5 | Robustness + doc accuracy | The "Save Missing IMEIs" write is wrapped so a failure surfaces instead of an unhandled rejection. Stale `SG-*.png` comments, type docs, and the MR PASS / MR FAIL tooltips were corrected to the exact-path behavior; the `buildDestPath` JSDoc was reattached and given the `machine-model` mode. |
+
+**Checkpoint**: `npm run typecheck` + lint pass; the production audit still parses 402/397/5 with identical hints; a repo-wide grep confirms zero references to every removed symbol; an MR audit (hints present) still routes to `searchMRDirect` and collects by exact path. Verified.
+
+---
+
 ## Milestone Dependency Map
 
 ```

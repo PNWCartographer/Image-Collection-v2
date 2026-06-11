@@ -34,11 +34,6 @@ export function addDaysToYMD(yyyymmdd: string, delta: number): string {
   return `${yy}${mm}${dd}`
 }
 
-/** Expand a YYYYMMDD date into [previousDay, day, nextDay] — catches midnight folder rollovers. */
-export function expandDateRange(yyyymmdd: string): string[] {
-  return [addDaysToYMD(yyyymmdd, -1), yyyymmdd, addDaysToYMD(yyyymmdd, 1)]
-}
-
 /** Format milliseconds into a human-readable elapsed time string. */
 export function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`

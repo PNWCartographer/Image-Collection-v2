@@ -196,19 +196,25 @@ function normalizeDate(raw: string, ambiguousOrder: DateOrder): string | null {
  * If any row has second number > 12, it must be MM/DD.
  * Default to MDY (US format) if fully ambiguous.
  */
-function detectDateOrder(values: string[]): DateOrder {
+function detectDateOrder(values: string[]): { order: DateOrder; ambiguous: boolean } {
   let mdyVotes = 0
   let dmyVotes = 0
+  let ambiguousFormatSeen = false
   for (const raw of values) {
     const dateOnly = raw.trim().split(/[\sT]+/)[0]
     const match = dateOnly.match(/^(\d{1,2})[-/](\d{1,2})[-/]\d{2,4}$/)
     if (!match) continue
+    ambiguousFormatSeen = true
     const first = parseInt(match[1], 10)
     const second = parseInt(match[2], 10)
     if (first > 12 && second <= 12) dmyVotes++
     else if (second > 12 && first <= 12) mdyVotes++
   }
-  return dmyVotes > mdyVotes ? 'DMY' : 'MDY'
+  const order: DateOrder = dmyVotes > mdyVotes ? 'DMY' : 'MDY'
+  // Ambiguous only when the column uses an M/D-style format but no value could
+  // disambiguate it (every day ≤ 12) — then the MDY default is just an assumption.
+  const ambiguous = ambiguousFormatSeen && mdyVotes === 0 && dmyVotes === 0
+  return { order, ambiguous }
 }
 
 /** Human-readable label for the detected date format. */
@@ -313,8 +319,13 @@ function detectHintColumns(rows: string[][], imeiCol: number, hasHeader: boolean
     result.dateHeader = hasHeader ? (rows[0][bestDateCol] || '').trim() || null : null
     // Disambiguate date format using all data rows
     const allDateValues = dataRows.map((r) => (r[result.dateCol!] || '').trim())
-    result.dateOrder = detectDateOrder(allDateValues)
-    result.dateFormatGuess = describeDateFormat(allDateValues, result.dateOrder)
+    const orderResult = detectDateOrder(allDateValues)
+    result.dateOrder = orderResult.order
+    result.dateFormatGuess = describeDateFormat(allDateValues, orderResult.order)
+    // Flag an undecidable M/D vs D/M so the UI shows the order was assumed.
+    if (orderResult.ambiguous && result.dateFormatGuess) {
+      result.dateFormatGuess += orderResult.order === 'MDY' ? ' — MDY assumed' : ' — DMY assumed'
+    }
   }
 
   // ── Model + Grade columns ──
@@ -410,12 +421,7 @@ function buildHints(
       if (rawModel) hint.model = deviceModel(rawModel)
     }
 
-    if (detection.gradeCol !== null) {
-      const rawGrade = (row[detection.gradeCol] || '').trim()
-      if (rawGrade) hint.grade = rawGrade
-    }
-
-    if (hint.machine || hint.date || hint.model || hint.grade) {
+    if (hint.machine || hint.date || hint.model) {
       // For duplicate IMEIs (re-tested devices) keep the MOST RECENT by date.
       // Dates are YYYYMMDD so string comparison gives chronological order.
       const existing = hints[imei]
@@ -460,6 +466,14 @@ function findIMEIColumn(rows: string[][]): number {
   }
 
   return bestCol
+}
+
+/** Column-header keywords — mark a row as a header even when a cell looks like data. */
+const HEADER_WORDS = /\b(imei|machine|date|model|grade|serial|sn|esn|meid)\b/i
+
+/** True when a row looks like a header (contains a known column keyword). */
+function looksLikeHeaderRow(row: string[]): boolean {
+  return row.some((cell) => HEADER_WORDS.test(cell || ''))
 }
 
 interface ParsedRows {
@@ -527,16 +541,49 @@ async function parseCSV(filePath: string): Promise<ParsedRows> {
   if (records.length === 0) return { rows: [], imeiCol: 0, hasHeader: false }
 
   const col = findIMEIColumn(records)
-  const firstVal = (records[0][col] || '').trim()
-  const hasHeader = !IMEI_REGEX.test(normalizeIMEI(firstVal))
+  const firstRow = records[0]
+  const firstVal = (firstRow[col] || '').trim()
+  const hasHeader = looksLikeHeaderRow(firstRow) || !IMEI_REGEX.test(normalizeIMEI(firstVal))
 
   return { rows: records, imeiCol: col, hasHeader }
+}
+
+/**
+ * Choose the worksheet most likely to hold the IMEI list — the one with the most
+ * IMEI-matching cells in its first rows. Falls back to the first sheet. Keeps the
+ * parser single-sheet (no concatenation) while preventing silent data loss when a
+ * template puts a cover/notes sheet before the data sheet.
+ */
+function pickBestSheet(workbook: XLSX.WorkBook): string {
+  const names = workbook.SheetNames
+  if (names.length <= 1) return names[0]
+  let bestName = names[0]
+  let bestCount = -1
+  for (const name of names) {
+    const sheet = workbook.Sheets[name]
+    if (!sheet) continue
+    const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' })
+    const rowsRaw: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' })
+    recoverScientificCells(rows, rowsRaw)
+    let count = 0
+    for (const row of rows.slice(0, 50)) {
+      if (row.some((cell) => IMEI_REGEX.test(normalizeIMEI(String(cell || ''))))) count++
+    }
+    if (count > bestCount) {
+      bestCount = count
+      bestName = name
+    }
+  }
+  return bestName
 }
 
 async function parseExcel(filePath: string): Promise<ParsedRows> {
   const buffer = await withReadTimeout(readFile(filePath))
   const workbook = XLSX.read(buffer, { type: 'buffer' })
-  const sheetName = workbook.SheetNames[0]
+  // Pick the worksheet with the most IMEI-looking cells — guards against a cover
+  // or notes sheet preceding the data sheet (taking sheet 0 blindly would silently
+  // drop every IMEI on the real sheet).
+  const sheetName = pickBestSheet(workbook)
   const sheet = workbook.Sheets[sheetName]
   const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' })
   const rowsRaw: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' })
@@ -546,8 +593,9 @@ async function parseExcel(filePath: string): Promise<ParsedRows> {
   if (rows.length === 0) return { rows: [], imeiCol: 0, hasHeader: false }
 
   const col = findIMEIColumn(rows)
-  const firstVal = (rows[0][col] || '').trim()
-  const hasHeader = !IMEI_REGEX.test(normalizeIMEI(firstVal))
+  const firstRow = rows[0]
+  const firstVal = (firstRow[col] || '').trim()
+  const hasHeader = looksLikeHeaderRow(firstRow) || !IMEI_REGEX.test(normalizeIMEI(firstVal))
 
   return { rows, imeiCol: col, hasHeader }
 }

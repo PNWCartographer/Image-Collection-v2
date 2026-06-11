@@ -241,14 +241,21 @@ export default function ResultsPanel({ lang, result, searching }: ResultsPanelPr
           onClick={async () => {
             if (!result) return
             const content = result.missingIMEIs.join('\n')
-            await window.electronAPI.saveFile(
-              'missing-imeis.txt',
-              [
-                { name: 'Text Files', extensions: ['txt'] },
-                { name: 'CSV Files', extensions: ['csv'] }
-              ],
-              content
-            )
+            try {
+              await window.electronAPI.saveFile(
+                'missing-imeis.txt',
+                [
+                  { name: 'Text Files', extensions: ['txt'] },
+                  { name: 'CSV Files', extensions: ['csv'] }
+                ],
+                content
+              )
+            } catch (err) {
+              window.alert(
+                t(lang, 'Could not save the file: ', '無法儲存檔案：', '无法保存文件：') +
+                  (err instanceof Error ? err.message : String(err))
+              )
+            }
           }}
         >
           {t(lang, 'Save Missing IMEIs', '儲存缺少的IMEI', '保存缺失的IMEI')}

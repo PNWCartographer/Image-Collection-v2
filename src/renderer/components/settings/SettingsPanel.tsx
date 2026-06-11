@@ -30,14 +30,14 @@ const TOOLTIPS: Record<string, Record<Lang, string>> = {
     'zh-CN': '设备可能被扫描多次。"全部"包含所有扫描记录。"仅第一个"仅包含每个设备的首次扫描。'
   },
   mrPass: {
-    en: 'Collect the Model Recognition image (the SG-*.png the system captured) for each IMEI in your audit list. Turning on MR PASS or MR FAIL enables MR collection — it finds each device\'s folder by IMEI and pulls out just that one MR image (fast). Results are tagged PASS/FAIL from the image\'s model name. Replaces standard image collection.',
-    'zh-TW': '為稽核清單中的每個 IMEI 收集模型辨識影像（系統擷取的 SG-*.png）。啟用 MR PASS 或 MR FAIL 即開啟 MR 收集 — 依 IMEI 找到每部裝置的資料夾，並只取出那一張 MR 影像（快速）。結果會依影像的型號名稱標記 PASS/FAIL。將取代標準圖片收集。',
-    'zh-CN': '为审计列表中的每个 IMEI 收集模型识别图像（系统捕获的 SG-*.png）。启用 MR PASS 或 MR FAIL 即开启 MR 收集 — 按 IMEI 找到每台设备的文件夹，并只取出那一张 MR 图像（快速）。结果会按图像的型号名称标记 PASS/FAIL。将取代标准图片收集。'
+    en: 'Collect the Model Recognition image for each IMEI in your audit list. The tool opens each device\'s folder directly by IMEI + Machine + Date and takes its image — fast, regardless of folder size. For a wrong-color / MR audit (one with a grade column) MR turns on automatically, so you get the images even with these toggles off. Results are tagged PASS/FAIL. Replaces standard image collection.',
+    'zh-TW': '為稽核清單中的每個 IMEI 收集模型辨識影像。工具會依 IMEI + 機器 + 日期直接開啟每部裝置的資料夾並取出其影像 — 不論資料夾大小都很快。對於顏色錯誤／MR 稽核（含評級欄位者），MR 會自動開啟，因此即使這些開關關閉您也能取得影像。結果會標記 PASS/FAIL。將取代標準圖片收集。',
+    'zh-CN': '为审计列表中的每个 IMEI 收集模型识别图像。工具会按 IMEI + 机器 + 日期直接打开每台设备的文件夹并取出其图像 — 不论文件夹大小都很快。对于颜色错误／MR 审计（含评级列者），MR 会自动开启，因此即使这些开关关闭您也能获取图像。结果会标记 PASS/FAIL。将取代标准图片收集。'
   },
   mrFail: {
-    en: 'Same as MR PASS — enables MR image collection for your audit list (the SG-*.png from each device\'s folder, located fast by IMEI). The PASS/FAIL tag just reflects each image\'s model name. Replaces standard image collection.',
-    'zh-TW': '與 MR PASS 相同 — 為稽核清單開啟 MR 影像收集（依 IMEI 快速定位每部裝置資料夾中的 SG-*.png）。PASS/FAIL 標記僅反映每張影像的型號名稱。將取代標準圖片收集。',
-    'zh-CN': '与 MR PASS 相同 — 为审计列表开启 MR 图像收集（按 IMEI 快速定位每台设备文件夹中的 SG-*.png）。PASS/FAIL 标记仅反映每张图像的型号名称。将取代标准图片收集。'
+    en: 'Same as MR PASS — both enable MR image collection for your audit list (each device\'s image, located directly by IMEI + Machine + Date). The PASS/FAIL tag just labels each result. For a wrong-color / MR audit this turns on automatically. Replaces standard image collection.',
+    'zh-TW': '與 MR PASS 相同 — 兩者皆為稽核清單開啟 MR 影像收集（依 IMEI + 機器 + 日期直接定位每部裝置的影像）。PASS/FAIL 標記僅用於標示每筆結果。對於顏色錯誤／MR 稽核會自動開啟。將取代標準圖片收集。',
+    'zh-CN': '与 MR PASS 相同 — 两者皆为审计列表开启 MR 图像收集（按 IMEI + 机器 + 日期直接定位每台设备的图像）。PASS/FAIL 标记仅用于标示每条结果。对于颜色错误／MR 审计会自动开启。将取代标准图片收集。'
   },
   aiImages: {
     en: 'When enabled, exports only the automated inspection photos (FD/ subfolder) instead of all images. When disabled, all images in the folder are exported including inspection photos.',

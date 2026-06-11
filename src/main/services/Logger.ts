@@ -56,8 +56,7 @@ export class RotatingLogger {
   }
 }
 
-/** Back-compat alias — export logging used this name. */
-export const ExportLogger = RotatingLogger
+/** Back-compat type alias — export logging used this name. */
 export type ExportLogger = RotatingLogger
 
 /**

@@ -21,6 +21,11 @@ export function cancelExport(): void {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+/** Extract a human-readable message from an unknown error. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 /**
  * Build the destination subfolder path based on organize mode.
  *
@@ -31,12 +36,8 @@ export function cancelExport(): void {
  * date-machine:  dest/YYYYMMDD/Machine/IMEI_index/
  * by-imei:       dest/IMEI/Machine_YYYYMMDD_index/
  * by-model:      dest/Brand-Model/IMEI_index/
+ * machine-model: dest/Machine/Brand-Model/IMEI_index/
  */
-/** Extract a human-readable message from an unknown error. */
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
 function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
   const machine = sanitizePathSegment(match.machineName)
   const folder = sanitizePathSegment(match.folderName)
@@ -68,20 +69,22 @@ function buildDestPath(dest: string, match: SearchMatch, organize: ExportRequest
 
 /**
  * Build destination path for MR (Model Recognition) exports.
- * MR matches are single .png files, grouped into an IMEI folder.
+ * MR matches are single .png files, grouped into an IMEI folder. MR collection
+ * yields one match per IMEI and every layout nests under the IMEI folder, so
+ * distinct devices never collide on the destination filename.
  *
- * flat:          dest/IMEI/Machine_YYYYMMDD_BrandModel.png
- * by-machine:    dest/Machine/IMEI/YYYYMMDD_BrandModel.png
- * by-date:       dest/YYYYMMDD/IMEI/Machine_BrandModel.png
- * machine-date:  dest/Machine/YYYYMMDD/IMEI/BrandModel.png
- * date-machine:  dest/YYYYMMDD/Machine/IMEI/BrandModel.png
- * by-imei:       dest/IMEI/Machine_YYYYMMDD_BrandModel.png
- * by-model:      dest/Brand-Model/IMEI/Machine_YYYYMMDD_BrandModel.png
+ * flat / by-imei: dest/IMEI/Machine_YYYYMMDD_Tag.png
+ * by-machine:     dest/Machine/IMEI/YYYYMMDD_Tag.png
+ * by-date:        dest/YYYYMMDD/IMEI/Machine_Tag.png
+ * machine-date:   dest/Machine/YYYYMMDD/IMEI/Tag.png
+ * date-machine:   dest/YYYYMMDD/Machine/IMEI/Tag.png
+ * by-model:       dest/Brand-Model/IMEI/Machine_YYYYMMDD_Tag.png
+ * machine-model:  dest/Machine/Brand-Model/IMEI/YYYYMMDD_Tag.png
  */
 function buildMRDestFilePath(dest: string, match: SearchMatch, organize: ExportRequest['organize']): string {
   const mrTag = match.mrFolder || (match.matchType === 'mr-pass' ? 'MR-Pass' : 'MR-Fail')
-  // MR matches always carry a model (parsed from the SG-*.png filename) or fall
-  // back to the source folder name (e.g. the Brand-Model folder, or 'Error-Error').
+  // An MR match's model comes from the audit hint (color-stripped) and may be
+  // absent, so fall back to the MR tag/folder, then 'Unknown'.
   const model = sanitizePathSegment(match.modelName || match.mrFolder || 'Unknown')
   const machine = sanitizePathSegment(match.machineName)
 

@@ -297,7 +297,9 @@ function App(): JSX.Element {
         scanIndexFilter: settings.scanIndex,
         mrPass: settings.mrPass || forceMR || undefined,
         mrFail: settings.mrFail || forceMR || undefined,
-        hints: useSmartSearch ? auditResult.hints : undefined,
+        // Send hints for an MR audit even if Smart Search is toggled off — MR
+        // collection needs Machine + Date to open each device folder by exact path.
+        hints: (useSmartSearch || forceMR) ? auditResult.hints : undefined,
         smartSearch: useSmartSearch
       })
 
@@ -505,6 +507,14 @@ function App(): JSX.Element {
                 '✓ MR collection list detected — every listed device’s MR image will be collected automatically. You don’t need to set MR PASS / MR FAIL.',
                 '✓ 偵測到 MR 收集清單 — 將自動收集清單中每部裝置的 MR 影像。您不需要設定 MR PASS / MR FAIL。',
                 '✓ 检测到 MR 收集列表 — 将自动收集列表中每台设备的 MR 图像。您不需要设置 MR PASS / MR FAIL。')}
+            </div>
+          )}
+          {searchResult?.notice === 'mr-no-hints' && (
+            <div className={styles.mrBanner}>
+              {t(lang,
+                '⚠ MR collection needs an audit with Machine and Date columns to locate each device’s image. This list has neither, so no MR images could be collected.',
+                '⚠ MR 收集需要含有「機器」與「日期」欄位的稽核清單才能定位每部裝置的影像。此清單兩者皆無，因此無法收集任何 MR 影像。',
+                '⚠ MR 收集需要含有"机器"与"日期"列的审计列表才能定位每台设备的图像。此列表两者皆无，因此无法收集任何 MR 图像。')}
             </div>
           )}
           <ResultsPanel lang={lang} result={displayResult} searching={searching} />
