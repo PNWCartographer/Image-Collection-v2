@@ -30,6 +30,21 @@ async function readdirWithTimeout(
 }
 
 /**
+ * List entry NAMES only (no withFileTypes). Over SMB this avoids a per-entry
+ * stat, so it is dramatically faster on large directories (a date folder can
+ * hold thousands of IMEI subfolders). Callers recognise IMEI folders by name
+ * pattern instead of by directory type.
+ */
+async function readdirNamesWithTimeout(dirPath: string): Promise<string[]> {
+  return Promise.race([
+    readdir(dirPath),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`readdir timed out after ${READDIR_TIMEOUT_MS}ms: ${dirPath}`)), READDIR_TIMEOUT_MS)
+    )
+  ])
+}
+
+/**
  * A missing or non-directory path is expected during discovery — it means
  * "nothing here", not a real failure. Real failures (permission, timeout,
  * network) are still surfaced as scan errors.
@@ -110,13 +125,14 @@ async function scanDateFolder(
   datePath: string,
   imeiSet: Set<string>,
   scanIndexFilter: SearchRequest['scanIndexFilter']
-): Promise<{ pending: PendingMatch[]; filteredCount: number }> {
-  const entries = await readdirWithTimeout(datePath, { withFileTypes: true })
+): Promise<{ pending: PendingMatch[]; filteredCount: number; entryCount: number }> {
+  // Names-only listing — IMEI folders are recognised by their `{15digits}_{n}`
+  // name pattern, so we don't need (slow) per-entry directory-type stats.
+  const names = await readdirNamesWithTimeout(datePath)
   const pending: PendingMatch[] = []
   let filteredCount = 0
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const parsed = parseIMEIFolder(entry.name)
+  for (const name of names) {
+    const parsed = parseIMEIFolder(name)
     if (!parsed) continue
     if (scanIndexFilter === 'first_only' && parsed.scanIndex !== 1) {
       // Track IMEIs that exist only at higher scan indices (M11)
@@ -127,12 +143,12 @@ async function scanDateFolder(
       pending.push({
         imei: parsed.imei,
         scanIndex: parsed.scanIndex,
-        folderName: entry.name,
-        folderPath: join(datePath, entry.name)
+        folderName: name,
+        folderPath: join(datePath, name)
       })
     }
   }
-  return { pending, filteredCount }
+  return { pending, filteredCount, entryCount: names.length }
 }
 
 /** Shared logic: count files in pending matches and build SearchMatch objects. */
@@ -254,7 +270,7 @@ async function searchTargeted(
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
 ): Promise<{ searched: number; fallbackImeis: string[]; machineOnlyGroups: Map<string, string[]> }> {
-  const { token, matches, foundIMEIs, logger } = ctx
+  const { token, matches, logger } = ctx
   const hints = request.hints!
   const selectedSet = new Set(request.selectedFolders)
 
@@ -317,21 +333,25 @@ async function searchTargeted(
     const [machine, dateStr] = key.split('/')
     const datePath = join(request.rootPath, machine, dateStr)
 
+    const t0 = Date.now()
     try {
       const localImeiSet = new Set(imeisInFolder)
-      const { pending, filteredCount } = await scanDateFolder(datePath, localImeiSet, request.scanIndexFilter)
+      const { pending, filteredCount, entryCount } = await scanDateFolder(datePath, localImeiSet, request.scanIndexFilter)
       ctx.scanIndexFiltered += filteredCount
+      const dt = Date.now() - t0
+      if (dt > 3000 || entryCount > 2000) {
+        logger.info(`  ${machine}/${dateStr}: ${entryCount} entries, ${pending.length} matched, ${dt}ms`)
+      }
       if (pending.length > 0 && !token.cancelled) {
         await buildMatchBatch(pending, machine, dateStr, ctx, onMatches)
       }
     } catch (err) {
-      // Date folder not accessible — these IMEIs need fallback
+      // Date folder couldn't be read (e.g. timeout on a very large folder).
+      // Record it and leave those IMEIs missing — do NOT fall back to a
+      // full-history broad scan, which would read hundreds more folders and hang.
       if (!isBenignDirError(err)) {
         ctx.scanErrors++
-        ctx.scanErrorDetails.push(`${machine}/${dateStr}: ${errorMessage(err)}`)
-      }
-      for (const imei of imeisInFolder) {
-        if (!foundIMEIs.has(imei)) fallbackImeis.push(imei)
+        ctx.scanErrorDetails.push(`${machine}/${dateStr} (${Date.now() - t0}ms): ${errorMessage(err)}`)
       }
     }
 
@@ -372,18 +392,17 @@ async function searchBroad(
     const machinePath = join(request.rootPath, folderName)
 
     try {
-      const entries = await readdirWithTimeout(machinePath, { withFileTypes: true })
+      const names = await readdirNamesWithTimeout(machinePath)
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        if (!DATE_FOLDER_REGEX.test(entry.name)) continue
-        if (SKIP_FOLDERS.has(entry.name.toLowerCase())) continue
-        if (!isDateInRange(entry.name, request)) continue
+      for (const name of names) {
+        if (!DATE_FOLDER_REGEX.test(name)) continue
+        if (SKIP_FOLDERS.has(name.toLowerCase())) continue
+        if (!isDateInRange(name, request)) continue
 
         dateFolders.push({
           machine: folderName,
-          datePath: join(machinePath, entry.name),
-          dateStr: entry.name
+          datePath: join(machinePath, name),
+          dateStr: name
         })
       }
     } catch (err) {

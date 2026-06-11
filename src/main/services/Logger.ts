@@ -1,14 +1,17 @@
-import { createWriteStream, type WriteStream } from 'fs'
+import { createWriteStream, appendFileSync, writeFileSync, type WriteStream } from 'fs'
 import { readdir, unlink, mkdir } from 'fs/promises'
 import { join } from 'path'
 
 export class RotatingLogger {
   private stream: WriteStream | null
   private filePath: string
+  /** When true, write each line synchronously (appendFileSync) so logs survive a hang. */
+  private sync: boolean
 
-  constructor(stream: WriteStream | null, filePath: string) {
+  constructor(stream: WriteStream | null, filePath: string, sync = false) {
     this.stream = stream
     this.filePath = filePath
+    this.sync = sync
   }
 
   info(msg: string): void {
@@ -24,9 +27,21 @@ export class RotatingLogger {
   }
 
   private write(level: string, msg: string): void {
+    const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`
+    if (this.sync) {
+      // Synchronous append — guarantees the line is on disk immediately, so a
+      // search that hangs (or is cancelled) still leaves a readable log.
+      if (!this.filePath) return
+      try {
+        appendFileSync(this.filePath, line)
+      } catch {
+        // Disable on failure (disk full, permission) rather than throwing
+        this.filePath = ''
+      }
+      return
+    }
     if (!this.stream || this.stream.destroyed) return
-    const ts = new Date().toISOString()
-    this.stream.write(`[${ts}] [${level}] ${msg}\n`)
+    this.stream.write(line)
   }
 
   getLogPath(): string {
@@ -50,8 +65,11 @@ export type ExportLogger = RotatingLogger
  * Keeps the 3 most recent logs of that prefix, deletes the rest.
  * Falls back to a no-op logger (null stream) if log creation fails.
  * Each prefix rotates independently so search logs never evict export logs.
+ *
+ * When `sync` is true the logger writes each line synchronously — slower, but
+ * the log is always readable on disk even if the operation hangs or is killed.
  */
-export async function createRotatingLogger(logsDir: string, prefix: string): Promise<RotatingLogger> {
+export async function createRotatingLogger(logsDir: string, prefix: string, sync = false): Promise<RotatingLogger> {
   try {
     await mkdir(logsDir, { recursive: true })
 
@@ -78,6 +96,12 @@ export async function createRotatingLogger(logsDir: string, prefix: string): Pro
     const logFile = `${prefix}-${ts}.log`
     const logPath = join(logsDir, logFile)
 
+    if (sync) {
+      // Create the file up front so appendFileSync has a target.
+      writeFileSync(logPath, '')
+      return new RotatingLogger(null, logPath, true)
+    }
+
     const stream = createWriteStream(logPath, { encoding: 'utf-8', flags: 'w' })
     stream.on('error', () => {
       // Disable logging on stream error (disk full, permission change)
@@ -97,7 +121,7 @@ export async function createExportLogger(logsDir: string): Promise<RotatingLogge
   return createRotatingLogger(logsDir, 'export')
 }
 
-/** Create a new search logger (keeps 3 most recent search logs). */
+/** Create a new search logger (keeps 3 most recent search logs). Writes synchronously. */
 export async function createSearchLogger(logsDir: string): Promise<RotatingLogger> {
-  return createRotatingLogger(logsDir, 'search')
+  return createRotatingLogger(logsDir, 'search', true)
 }
