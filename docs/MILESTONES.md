@@ -217,7 +217,7 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 ## Milestone 10: Model Recognition Image Collection
 > **Gate**: MR PASS toggle → exports only MR PASS `.png` files; MR FAIL toggle → exports only MR FAIL images; both OFF → normal collection
 
-> **⚠ Superseded by Milestone 15 (v1.5.1).** The `ModelRecogImages/` traversal described in the 10a/10b tasks below was the original MR approach. It was **abandoned** because the `{Brand-Model}/` folders hold tens of thousands of files and time out over SMB. MR collection now reuses the standard IMEI-folder search and extracts the per-device `SG-*.png` from each matched IMEI folder; `ModelRecogImages` is no longer scanned. The toggles also no longer narrow the search path (enabling either collects every audit IMEI's `SG-*.png`, tagged PASS/FAIL from the parsed model name). See M15 for the current behavior; the 10a/10b rows below are retained for historical context only.
+> **⚠ Superseded — see Milestone 16 for current behavior.** The `ModelRecogImages/` traversal in the 10a/10b tasks below was the original MR approach. It was **abandoned** because the `{Brand-Model}/` folders hold tens of thousands of files and time out over SMB. An interim design (M15, v1.5.1) reused the standard IMEI-folder search and extracted the per-device `SG-*.png`; that too was superseded once the real layout was confirmed. **Current (M16, v1.5.4–v1.5.7):** wrong-color devices are a bare `{IMEI}` folder opened by exact path; `ModelRecogImages` is never scanned and the audit list (grade column) drives collection. The 10a/10b rows below are retained for historical context only.
 
 ### 10a: MR PASS Images (READY TO BUILD)
 
@@ -328,6 +328,8 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 ## Milestone 15: MR Search Reliability & Diagnostics
 > **Gate**: A search produces a `search-*.log` showing the path decision (targeted vs full-discovery) + per-machine folder counts; MR collection runs the fast IMEI-folder search and returns each audit IMEI's `SG-*.png` (tagged PASS/FAIL); toggling a setting does not require re-uploading the audit file
 
+> **⚠ The MR-collection mechanism in 15.3/15.4 (extract `SG-*.png` from each `{IMEI}_{index}` folder) was an interim design, superseded by Milestone 16 (v1.5.4–v1.5.7).** A File Station check showed wrong-color devices are actually stored as a bare `{IMEI}` folder (no `_index`) holding a timestamp-named `.png` — so the `{IMEI}_*` + `SG-*.png` lookup found nothing for them. MR collection now opens that `{IMEI}` folder by **exact path**. The non-MR items in this milestone (15.1/15.2 logging & View Log, 15.5 auto End-Date +1, 15.6 OneDrive timeout, 15.7 Machine→Model, 15.8 stale-state) all still hold. See M16 for the current MR behavior.
+
 | # | Task | Details |
 |---|------|---------|
 | 15.1 | Search logging | Write a rotating `search-<timestamp>.log` to `%APPDATA%/Image Collection v2/logs/` on every search (keep 3 most recent, separate from export logs). Record search mode (standard/MR), IMEI/hint counts, SmartSearch + MR flags, scan-index filter, date range, selected folders, root path, the path taken (targeted vs full-discovery) with per-machine folder counts and drop-reason counters, fallback transitions, scan errors, and a final summary (matches, missing, foldersScanned, scanErrors, elapsed) |
@@ -340,6 +342,23 @@ Each milestone has a **gate** — a specific, testable condition that must pass 
 | 15.8 | Stale-state fix | The date range is read from committed React state at search time (not a ref that could be stale right after auto-populate); machine auto-select is keyed by content. Changing a setting/toggle no longer requires re-uploading the audit file |
 
 **Checkpoint**: Run an MR search → a `search-*.log` is written showing whether the targeted or full-discovery path ran, with per-machine folder counts and the final summary, and the run completes in seconds (no `ModelRecogImages` enumeration). Each matched device's `SG-*.png` is collected and tagged PASS/FAIL from its model name; a device with no `SG-*.png` is reported missing. Toggle MR PASS/FAIL or change the date range without re-uploading the audit file → the next search still works. Export with Machine → Model → folders nest as `dest/{machine}/{model}/...`.
+
+---
+
+## Milestone 16: Exact-Path & Audit-Driven MR Collection (v1.5.4 → v1.5.7)
+> **Gate**: An MR collection audit (wrong-color list) collects every listed device by opening its exact `{machine}/{date}/{IMEI}/` folder — and does so **even with both MR toggles OFF and no special settings** — while Type A `{IMEI}_{index}` devices still collect normally and no faster path regresses.
+
+This milestone replaces the Milestone 15 SG-`*`.png-extraction mechanism after the real on-disk layout was confirmed. It builds up across four releases.
+
+| # | Task | Details |
+|---|------|---------|
+| 16.1 | Exact-path MR collection (v1.5.4) | Wrong-color / MR-upload devices are stored as a bare `{IMEI}` folder (no `_index`) with a **timestamp-named `.png`** (not `SG-*`). `searchMRDirect` → `buildHintedTargets` + `collectMRDirect` open each `{root}/{machine}/{date}/{IMEI}/` by **exact path** (fully known from the audit's IMEI + Machine + Date) and take the `.png` inside, whatever its name. No wildcard, no listing of the giant date folder → instant and immune to the concurrency saturation that timed out listing/`dir` approaches. `searchMRImages`/`scanMRDateFolders`/`discoverMRDateFolders` removed. |
+| 16.2 | Server-side wildcard for Type A (v1.5.3) | Standard `{IMEI}_{index}` lookups resolve each folder via `findMatchingIMEIFolders` running `cmd /c dir /b /a:d {datePath}\{IMEI}_*` in a child process — the NAS applies the wildcard so the folder is found without enumerating the date folder, and a slow NAS never pins Node's fs thread pool. A read error reports those IMEIs missing instead of triggering a broad rescan. |
+| 16.3 | Auto-detect MR audit + model (v1.5.5) | `AuditParser` detects a **grade column** (header contains "grade", or values match a grade vocabulary) → `AuditParseResult.isMRAudit = true`; the renderer **force-enables MR collection** (`forceMR`) with a banner, regardless of the toggles. It also detects a **model column** (header contains "model"), reduces each value to the device model via `deviceModel()` (drops the trailing color segment, e.g. `Apple-iPhone11-Purple` → `Apple-iPhone11`) into `AuditHint.model`, which flows onto each match's `modelName` for By Model / Machine→Model. The raw `grade` is captured on the hint too. |
+| 16.4 | All organize modes for MR matches (v1.5.5/v1.5.7) | MR matches are no longer Flat-only — By Machine, By Date, Machine→Model, By Model, etc. all work. The model level comes from the audit's Model column; without a Model column only By Model / Machine→Model fall back to an `Unknown` folder (other modes unaffected). |
+| 16.5 | Universal exact-path probe / bulletproof collection (v1.5.7) | The dispatcher `searchIMEIs` runs `collectMRDirect` over **all** hinted targets **first on every Smart Search** — even non-MR/standard. Type B `{IMEI}` devices are collected **regardless of the MR toggle or a grade column**. Type A `{IMEI}_{index}` devices `ENOENT` on the probe (fast) and only those fall through to the standard server-side-wildcard enumeration, so the standard path is no slower. |
+
+**Checkpoint**: Load a wrong-color audit (IMEI + Machine + Date + Grade + Model) with **both MR toggles OFF** → the banner appears, MR auto-enables, and every listed device is collected by opening its `{IMEI}` folder directly; the run is instant (no date-folder listing, no `ModelRecogImages`). Export with Machine → Model → `dest/M12/Apple-iPhone11/{IMEI}/<file>.png`. Remove the Model column and re-run → still collected; By Model lands them under `Unknown`. Confirm a standard (Type A) audit still collects full folders via the `{IMEI}_*` server-side lookup at the same speed as before.
 
 ---
 
@@ -357,6 +376,7 @@ M0 (Scaffold)
                      ├─► M10a (MR PASS) ─┬─► M12 (Packaging) ──► M13 (README)
                      ├─► M10b (MR FAIL) ┤         │
                      │                  └─► M15 (MR Reliability & Diagnostics)
+                     │                          └─► M16 (Exact-Path & Audit-Driven MR)
                      ├─► M11 (Pending)             │
                      └──────────────────► M14 (Auto-Update) [blocked on IT approval]
 ```

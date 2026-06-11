@@ -1,7 +1,7 @@
 # Image Collection v2 — Test Procedure
 
-**Covers:** All implemented milestones — UI, search, export, multi-source, history, bilingual, packaging, MR search reliability & diagnostics (v1.5.1)  
-**Last updated:** 2026-06-10
+**Covers:** All implemented milestones — UI, search, export, multi-source, history, bilingual, packaging, and exact-path / audit-driven MR collection (v1.5.7)  
+**Last updated:** 2026-06-11
 
 ---
 
@@ -100,6 +100,8 @@
 | 6.9 | Load a malformed/empty file | Error message displayed, no crash |
 | 6.10 | Verify file name displayed | "File:" row shows the loaded filename |
 | 6.11 | Hover over dropzone while dragging | Dropzone border highlights, text changes to "Drop to import" |
+| 6.12 | Load an audit file **with a grade column** (e.g. a "Wrong Color" list) | "MR collection list detected" banner appears; MR collection is auto-enabled without touching the MR toggles |
+| 6.13 | Load an audit file **with a model column** | Model column detected; the model (color stripped, e.g. `Apple-iPhone11`) is available for By Model / Machine → Model organization |
 
 ---
 
@@ -291,7 +293,9 @@
 | 20.5 | Set Organize to Date → Machine, export | Two-level nesting: dest/20260515/M8/IMEI_idx/ |
 | 20.6 | Set Organize to By IMEI, export | Grouped by IMEI: dest/350.../M8_20260515_192/ |
 | 20.7 | Set Organize to Machine → Model (standard search), export | Two-level nesting by parsed model: dest/M8/Apple-iPhone13Pro/IMEI_idx/ |
-| 20.8 | Set Organize to Machine → Model with an MR search, export | MR layout: dest/M8/<Model\|Error-Error>/IMEI/<date>_<tag>.png |
+| 20.8 | Set Organize to Machine → Model with an MR collection list (Model column present), export | MR layout grouped by the audit's model: dest/M12/Apple-iPhone11/{IMEI}/<file>.png |
+| 20.9 | Set Organize to By Model with an MR collection list, export | Grouped by the audit's model: dest/Apple-iPhone11/{IMEI}/<file>.png |
+| 20.10 | Repeat 20.8/20.9 with an MR list that has **no Model column** | Devices still collected; By Model / Machine → Model place them under an `Unknown` folder (other modes unaffected) |
 
 ---
 
@@ -314,19 +318,23 @@
 
 ---
 
-## 23. Export — MR Image Export
+## 23. MR Image Collection (exact-path)
+
+> Use an audit list of wrong-color / MR-upload devices — IMEI + Machine + Date, ideally also Grade and Model. These devices are stored as a bare `{IMEI}` folder (no `_index`) holding a timestamp-named `.png`.
 
 | # | Test | Expected |
 |---|------|----------|
-| 23.1 | Enable MR PASS (only), run search | Runs the standard fast IMEI-folder search (no `ModelRecogImages` enumeration); each matched device's `SG-*.png` is collected and tagged PASS (green) / FAIL (red) from the model name in the filename |
-| 23.2 | Enable MR FAIL (only), run search | Same IMEI-folder search and `SG-*.png` extraction as 23.1 — toggle choice does not change the search path |
-| 23.3 | Enable both MR PASS and MR FAIL | Identical result set to 23.1/23.2 (enabling either toggle already collects every IMEI's `SG-*.png`) |
-| 23.4 | Run an MR search with a "wrong color" style audit list (devices graded wrong-color) | Every listed IMEI's `SG-*.png` is returned; wrong-color devices appear tagged PASS (their `SG-*.png` model is a real model, not `Error-Error`) — none are dropped as missing |
-| 23.5 | Confirm an audit IMEI whose `SG-*.png` model is `Error-Error` | Returned and tagged FAIL |
-| 23.6 | Export MR results | Only the `SG-*.png` is exported per match, with correct naming and organization (PASS/FAIL reflected in tag/folder) |
-| 23.7 | MR export in Move mode | MR images are always copied (the `SG-*.png` is never deleted from its source IMEI folder) |
-| 23.8 | Include an IMEI tested near midnight whose folder rolled to the next day | Found via the standard search's auto End-Date +1 (max test date + 1 day), not reported missing |
-| 23.9 | Confirm a matched IMEI folder that contains no `SG-*.png` | Reported as missing (and counted in the search log) |
+| 23.1 | Load a wrong-color audit **with a Grade column**, leave **both MR toggles OFF**, run search | Banner showed MR was auto-enabled; every listed device is collected by opening `{machine}/{date}/{IMEI}/` by exact path. Instant — no date-folder listing, no `ModelRecogImages` scan |
+| 23.2 | **Bulletproof — both toggles OFF, no Grade column** (plain IMEI+Machine+Date list of Type B devices), run search | The universal exact-path probe still collects every `{IMEI}` device — they are NOT dropped just because MR was off and there was no grade column |
+| 23.3 | Enable MR PASS (only), run search | Same exact-path collection; matches tagged PASS (green) |
+| 23.4 | Enable MR FAIL (only), then both, run search | Identical result set — the toggle choice does not change the path (enabling either, or a grade column, already collects every `{IMEI}` device) |
+| 23.5 | Export MR results | Only the single `.png` is exported per match, with correct naming and the selected organization |
+| 23.6 | Export with **Machine → Model**, Model column present | Lands at `dest/{machine}/{model}/{IMEI}/<file>.png` (model from the audit's Model column, color stripped) |
+| 23.7 | Repeat with an MR list that has **no Model column** (By Model / Machine → Model) | Devices still collected; placed under an `Unknown` folder; all other organize modes unaffected |
+| 23.8 | MR collection in Move mode | MR images are always copied (the source `{IMEI}` folder is never deleted) |
+| 23.9 | Include an IMEI tested near midnight whose folder rolled to the next day | Found via auto End-Date +1 (max test date + 1 day), not reported missing |
+| 23.10 | Confirm a `{IMEI}` folder that exists but holds no `.png` | Counted in the search log (no image collected); a Type A device with no `{IMEI}` folder simply isn't matched on the probe and is resolved by the standard `{IMEI}_*` lookup |
+| 23.11 | Mixed list (some Type A `{IMEI}_{index}`, some Type B `{IMEI}`), run search | Type B collected by the exact-path probe; Type A fall through to the server-side `{IMEI}_*` lookup — both appear in results, standard path no slower than before |
 
 ---
 
@@ -346,6 +354,7 @@
 |---|------|----------|
 | 24b.1 | Run an MR search, then check `%APPDATA%/Image Collection v2/logs/` | A new `search-<timestamp>.log` file is present (separate from export logs) |
 | 24b.2 | Open the search log | Shows the request summary (mode, IMEI/hint counts, MR + SmartSearch flags, scan-index filter, date range, folders, root) and the **path decision** (targeted vs full-discovery) with per-machine folder counts |
+| 24b.2a | In the log of a Smart Search, confirm the exact-path probe line | An "Exact-path probe: checking N {IMEI} folders before enumeration" entry (or "MR direct: opening N device folders") is present, confirming the universal probe ran |
 | 24b.3 | Verify the log records fallbacks and errors | Fallback transitions and scan errors are logged; a final summary line shows matches, missing, foldersScanned, scanErrors, elapsed |
 | 24b.4 | After the search completes, click "View Log" in the status bar | The logs folder opens in Explorer (the run's `search-*.log` is present there) |
 | 24b.5 | Run 4 searches | Only the 3 most recent search logs remain (oldest rotated); export logs are unaffected |

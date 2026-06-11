@@ -93,6 +93,9 @@ interface AuditParseResult {
     reason: string;           // 'not_15_digits' | 'non_numeric' | 'empty'
   }[];
   duplicateCount: number;
+  hints?: Record<string, AuditHint>;  // IMEI → machine/date/model/grade hints
+  hintMeta?: HintDetectionMeta;       // detection diagnostics for the UI badges
+  isMRAudit: boolean;                 // true when a grade column was detected
 }
 
 // IPC Channel:
@@ -105,6 +108,15 @@ interface AuditParseResult {
 - **TXT**: Read line by line. Trim whitespace. Validate each line as a potential IMEI.
 
 **IMEI validation**: `const isValidIMEI = /^\d{15}$/.test(value.trim())`
+
+**OneDrive-safe read**: every file read is wrapped in a 20-second timeout (`withReadTimeout`). An unhydrated OneDrive "Files On-Demand" placeholder rejects with `AUDIT_FILE_DOWNLOADING` instead of hanging the parse.
+
+**Hint-column detection** (`detectHintColumns`, multi-column formats only) — columns are identified by **data pattern**, not header name:
+- **Machine** / **Date** columns: the column whose sampled values most often parse via `normalizeMachine` / `normalizeDate` (≥50% of sampled rows), with MM/DD vs DD/MM disambiguated across all rows.
+- **Model** column: a column whose **header contains "model"**. Each value is reduced to the device model by `deviceModel()`, which drops the trailing color segment (`Apple-iPhone11-Purple` → `Apple-iPhone11`, only when the label has ≥3 hyphen parts).
+- **Grade** column: a column whose **header contains "grade"**, or — as a content fallback when no such header exists — a column whose values match a grade vocabulary (`GRADE_WORDS` = wrong/pass/fail/error/mismatch/defect/reject/good). A detected grade column sets **`isMRAudit = true`**, which the renderer uses to auto-enable MR collection.
+
+`buildHints` produces one `AuditHint` per IMEI carrying any detected `machine`, `date`, `model`, and `grade` (first occurrence wins on duplicate IMEIs).
 
 ### 3.3 IMEISearchEngine
 
@@ -134,8 +146,8 @@ interface SearchMatch {
   otherCount: number;
   totalFiles: number;
   matchType?: 'mr-pass' | 'mr-fail';  // undefined for standard matches
-  mrFolder?: string;             // PASS/FAIL tag derived from the model name ('Error-Error' for FAIL)
-  modelName?: string;            // Parsed from SG-*.png filename; falls back to source folder name
+  mrFolder?: string;             // model/Error-Error tag for the MR match
+  modelName?: string;            // device model: from the audit hint (Type B / exact-path probe) or parsed from a SG-*.png filename (Type A fallback)
 }
 
 interface SearchResult {
@@ -144,6 +156,9 @@ interface SearchResult {
   totalSearched: number;
   scanErrors: number;            // folders that failed to read (network/permission)
   elapsedMs: number;
+  logPath?: string;              // path to this search's diagnostic log
+  scanErrorDetails?: string[];   // per-folder failure descriptions
+  scanIndexFiltered?: number;    // IMEIs dropped by the first-only scan-index filter
 }
 
 // IPC Channels:
@@ -153,47 +168,49 @@ interface SearchResult {
 // 'cancel-search'       → cancels an in-progress search
 ```
 
-**Concurrency**: Uses shared `pooled()` / `pooledVoid()` worker pools (from `src/shared/pool.ts`) with 48 concurrent NAS reads, tuned for the RS3617RPxs (12-drive RAID 5, 1 Gbps).
+**Concurrency**: Uses shared `pooled()` / `pooledVoid()` worker pools (from `src/shared/pool.ts`) with 48 concurrent NAS reads for broad enumeration, tuned for the RS3617RPxs (12-drive RAID 5, 1 Gbps). The server-side `dir` lookups and direct per-IMEI folder reads run at a more modest 16 concurrent each.
 
-**Search algorithm — Standard mode (MR PASS OFF, MR FAIL OFF):**
-1. Phase 1 — Discover date folders (parallel across machines via `pooled()`):
-   a. Read subfolders, filter to date folders (`/^\d{8}$/`)
-   b. Apply date range filter if specified
-2. Phase 2 — Scan date folders for IMEI matches (parallel pool):
-   a. For each date folder, read IMEI_Index subfolders
-   b. For each IMEI_Index folder:
-      - Extract IMEI via `parseIMEIFolder()`: split on underscore, validate first 15 chars are digits
-      - Extract scan index: integer after the underscore
-      - Apply scan index filter (`first_only` keeps only `_1`)
-      - Check IMEI against audit list (Set lookup — O(1))
-      - If match: count files by extension (bmp/jpeg/other)
-   c. Stream matched batches to renderer via IPC
-3. Build final result with missing IMEIs list
+**Two device-folder layouts under `{machine}/{date}/`** (see DIRECTORY-SCHEMA.md):
+- **Type A** — a full-scan folder named `{IMEI}_{index}` containing JPEG scan images, `DefectLog.xml`, `Grade.json`, `FD/`, and a `SG-*.png` MR image.
+- **Type B** — an MR / CMC-upload ("wrong color") folder named **exactly `{IMEI}`** (no `_index`) containing a single timestamp-named `.png` (not `SG-*`) plus `CMCSentFlag.txt`, `Upload.success`, `UUID.key`.
 
-**Search algorithm — MR mode (MR PASS ON and/or MR FAIL ON):**
+The engine collects from both, and the dispatcher `searchIMEIs` chooses the path:
 
-Enabling **either** MR PASS or MR FAIL activates MR mode by setting a `mrMode` flag on the `SearchContext`. MR mode is **not** a separate search path — it runs the exact same fast standard IMEI-folder search described above (`searchIMEIs` over `{machine}/{date}/{IMEI}_{index}/`, with full Smart Search targeting/fallback). The only difference is what gets captured and exported: from each matched IMEI folder the engine extracts the single Model Recognition image — the `SG-*.png` that lives **inside** that folder alongside the scan images, `DefectLog.xml`, and `Grade.json`.
+**`searchIMEIs` dispatcher (the universal exact-path probe):**
 
-MR mode does **not** scan `ModelRecogImages` at all. Those `ModelRecogImages/{Brand-Model}/` folders accumulate tens of thousands of files per model and time out over SMB (the 15s `readdir` timeout fires, yielding empty results and a hung UI). Because the per-device `SG-*.png` already lives in each small IMEI folder, the standard lookup gets the same image far faster. A device's grade (e.g. "Wrong Color") is only knowable from the audit file — never from the NAS — so the audit list itself is the filter; there is intentionally no "wrong color" toggle.
+1. **MR mode** (`request.mrPass || request.mrFail`) **with hints** → `searchMRDirect` only (see below). No enumeration at all.
+2. **Smart Search with hints** (standard or MR) → run a **universal exact-path probe first**: `collectMRDirect` over **all** hinted targets. This catches every Type B `{IMEI}` device instantly — even when MR was never enabled and the audit had no grade column to auto-enable it. Then **standard enumeration runs only for the IMEIs the probe did not find** (`request.imeis.filter(i => !foundIMEIs.has(i))`) — the Type A devices, which `ENOENT` on the probe (a fast, cheap miss) and fall through to `searchTargeted` → machine-only narrowed scans → full broad fallback. Type A devices therefore cost no more than before.
+3. **Smart Search without hints** → a warning is logged and a full `searchBroad` runs.
 
-Capture happens in `buildMatchBatch`: while counting a matched folder's files, `countFiles()` / `countFilesRecursive()` also record the first `SG-*.png` they encounter, returning its `mrImageName` and `mrImagePath`. For an MR-mode match the engine then:
-   - Parses the model from the `SG-*.png` filename (e.g. `Apple-iPhone8`)
-   - Tags the match PASS (green) / FAIL (red) from that model name — `Error-Error` → `mr-fail`, anything else → `mr-pass` — and sets `mrFolder` and `modelName` accordingly
-   - Exports only the `SG-*.png` (not the whole folder)
-   - Reports a matched IMEI folder that contains no `SG-*.png` as missing (counted in the search log)
+**`searchMRDirect` / `collectMRDirect` (exact-path MR collection):**
+- `buildHintedTargets(request)` turns each IMEI's machine+date hint into a `HintedTarget` (dropping IMEIs whose machine isn't selected or whose date is out of range; counting each drop reason for the log).
+- `collectMRDirect` opens each target's **exact** path `{rootPath}/{machine}/{date}/{IMEI}/` via `readdirWithTimeout` and takes the first `.png` inside, **whatever its name**. Opening a fully known path never enumerates the (enormous) parent date folder — so it is instant regardless of folder size and immune to the SMB `readdir` saturation that timed out wildcard/listing approaches. The match carries `matchType: 'mr-pass'`, `scanIndex: 0`, and `modelName`/`mrFolder` from the audit hint's `model`. A target folder that exists but holds no `.png` increments `noMRImage`; an `ENOENT` (no `{IMEI}` folder here — i.e. a Type A device) is benign. Already-found IMEIs are skipped, which is exactly what lets the same routine serve as the probe ahead of enumeration.
+- `ModelRecogImages/` is **never** scanned. Those `{Brand-Model}/` folders accumulate tens of thousands of files and time out over SMB; they are reference-only. The removed functions `searchMRImages` / `scanMRDateFolders` / `discoverMRDateFolders` (the abandoned v1.5.0 approach) no longer exist.
+
+**`searchTargeted` (standard Type A collection, server-side wildcard):**
+- Groups hinted IMEIs by `machine/date`. For each group it calls `findMatchingIMEIFolders(datePath, imeis)`, which runs `cmd /c dir /b /a:d {datePath}\{IMEI}_*` (batched ≤60 patterns to stay under the command-line limit). The wildcard is applied **on the NAS**, so each device's `{IMEI}_{index}` folder is returned **without enumerating** the date folder — fast no matter how many subfolders it holds. It runs in a **child process**, so a slow NAS never pins Node's `fs` thread pool (the orphaned-`readdir` problem that also lagged the UI). IMEIs are validated 15-digit, so the patterns are injection-safe. A read error here does **not** trigger a broad rescan — those IMEIs are reported missing with the error logged. (Non-Windows dev/test falls back to a names-only listing.)
+- Matched folders are counted via `buildMatchBatch` → `countFiles` (bounded at 8 concurrent reads per worker), which also captures any `SG-*.png` so a Type A device collected on this path still carries a parsed `modelName` and PASS/FAIL tag.
+
+**`searchBroad` (no-hint fallback):**
+1. Discover date folders (parallel across machines): names-only `readdir`, filter to `^\d{8}$`, apply date range, skip `SKIP_FOLDERS` (`#recycle`, `$recycle.bin`, `modelrecogimages`, `version_control`).
+2. Scan each date folder (`scanDateFolder`, names-only): recognise `{IMEI}_{index}` by pattern, apply the scan-index filter, match against the audit Set (O(1)), then `buildMatchBatch`.
+
+Matched batches stream to the renderer via IPC throughout; `buildResult` then diffs the audit list against `foundIMEIs` for the missing list and writes the final log summary.
 
 **Incomplete detection** (renderer-side, in `ResultsPanel.tsx`):
 - Computed via `useMemo`: calculate median file count across all matches
 - Flag matches with file count < 50% of median as incomplete (orange dot in UI)
 
-### 3.3.1 Smart Search (Targeted Search Path)
+### 3.3.1 Smart Search & Hints
 
-When the audit file contains machine and/or date columns, the AuditParser populates `hints` and `hintMeta` on the parse result. The renderer passes these to the search engine via `SearchRequest.hints` and `SearchRequest.smartSearch`.
+When the audit file contains machine, date, model, and/or grade columns, the AuditParser populates `hints` and `hintMeta` on the parse result. The renderer passes these to the search engine via `SearchRequest.hints` and `SearchRequest.smartSearch`.
 
 ```typescript
 interface AuditHint {
   machine?: string   // Normalized to NAS folder name, e.g. "M8", "M10"
   date?: string      // Normalized to YYYYMMDD format
+  model?: string     // Device model, color stripped (e.g. "Apple-iPhone11")
+  grade?: string     // Raw grade value (e.g. "Grade-D2C" / "Wrong Color")
 }
 
 interface HintDetectionMeta {
@@ -208,19 +225,23 @@ interface HintDetectionMeta {
 // On SearchRequest:
 //   hints?: Record<string, AuditHint>   — IMEI → hint mapping
 //   smartSearch?: boolean               — enables targeted search when true
+//   mrPass?, mrFail?: boolean           — MR collection toggles
 ```
 
-**Targeted search algorithm** (when `smartSearch` is true and `hints` are available):
+**How hints drive the search** (full dispatch logic in §3.3):
+1. **Full hints** (machine + date): the exact-path probe / `searchMRDirect` opens `{rootPath}/{machine}/{date}/{IMEI}/` directly (Type B), and `searchTargeted` resolves `{IMEI}_{index}` by server-side wildcard for any Type A device the probe missed.
+2. **Machine-only hints**: a narrowed broad scan constrained to that one machine.
+3. **No usable hints**: full broad scan across all selected folders.
 
-1. **Full hints** (machine + date): Go directly to `{rootPath}/{machine}/{date}/` instead of scanning all folders. This skips Phase 1 discovery entirely for hinted IMEIs.
-2. **Machine-only hints**: Run a narrowed broad scan constrained to a single machine folder per group of IMEIs.
-3. **No-hint fallback**: IMEIs without usable hints fall back to the standard full broad scan across all selected folders.
+IMEIs always degrade to the next-broadest scan rather than being lost.
 
-Smart Search also drives UI behavior in the Source panel:
-- **Auto-select machine folders**: When hints reference specific machines, those folders are automatically toggled on in the folder grid. Auto-select is keyed by content so it re-runs when the hint set changes.
-- **Auto-fill date range**: When hints contain date values, the date range filter is pre-populated. The End Date is set to **max(test date) + 1 day** to catch devices tested near midnight whose image folder rolled over to the next day.
+**Auto-detect MR audit + model** (renderer behavior driven by the parse result):
+- When `AuditParseResult.isMRAudit` is true (a grade column was detected), the renderer **force-enables MR collection** (`forceMR`) regardless of the MR PASS / MR FAIL toggle positions, and shows a confirmation banner. The operator no longer needs to know which toggle to set.
+- The `model` hint flows through `buildHintedTargets` onto each match's `modelName`, so **By Model** and **Machine → Model** organization work for MR collection audits even though the Type B `.png` filename carries no model.
 
-The same targeted approach applies to MR mode — because MR mode reuses the standard IMEI-folder search, MR searches with full hints go directly to `{machine}/{hintDate}/{IMEI}_{index}/` and inherit the identical machine-only and broad fallbacks. The `SG-*.png` is then extracted from each matched folder (see §3.3, MR mode algorithm). MR mode does not touch `ModelRecogImages`.
+Smart Search also drives Source-panel UI:
+- **Auto-select machine folders**: machines referenced by hints are toggled on; auto-select is keyed by content so it re-runs when the hint set changes.
+- **Auto-fill date range**: pre-populates Start/End; the End Date is set to **max(test date) + 1 day** to catch devices tested near midnight whose folder rolled over.
 
 **Committed date-range state**: The search reads the date range from committed React state directly at search time, rather than a ref that could still hold the pre-auto-populate value. Combined with content-keyed machine auto-select, this means changing a setting or toggle no longer requires re-uploading the audit file for the next search to use the right filters.
 
@@ -286,7 +307,7 @@ Rotating diagnostic logging shared by **both** the export and search engines. Fi
 - Generates timestamped log files in `%APPDATA%/Image Collection v2/logs/`
 - Two independent log families, each keeping its **3 most recent** files and rotating older ones:
   - `export-<timestamp>.log` — written on every export
-  - `search-<timestamp>.log` — written on every search (added in v1.5)
+  - `search-<timestamp>.log` — written on every search; lines are flushed **synchronously** so the log is readable mid-run or after a cancel (a buffered log looked empty)
 - Falls back to a no-op logger (no file I/O) when log file creation fails, so logging never blocks an operation
 
 **Search log contents** (`search-<timestamp>.log`):
@@ -469,28 +490,39 @@ function parseIMEIFolder(name: string): { imei: string; scanIndex: number } | nu
 }
 ```
 
-### MR Image IMEI Extraction
+### Exact-Path MR Collection (Type B `{IMEI}` folders)
 ```typescript
-// From IMEISearchEngine.ts — extractMRImei()
-// Filename: SG-M008-075545-358627090247469-Apple-iPhone8.png
-// Segments:  0    1     2          3          4       5
-function extractMRImei(fileName: string): string | null {
-  const segments = fileName.replace(/\.png$/i, '').split('-');
-  if (segments.length < 4) return null;
-  const candidate = segments[3];
-  return /^\d{15}$/.test(candidate) ? candidate : null;
-}
+// From IMEISearchEngine.ts — collectMRDirect()
+// The folder name IS the IMEI (no _index), so the path is fully known from the
+// audit hint. Open it directly and take the first .png — whatever its name.
+const folderPath = join(request.rootPath, t.machine, t.date, t.imei);
+const files = await readdirWithTimeout(folderPath, { withFileTypes: true });
+const png = files.find((f) => f.isFile() && f.name.toLowerCase().endsWith('.png'));
+// Opening a known path never enumerates the giant parent date folder → instant,
+// and immune to the SMB readdir saturation that timed out listing approaches.
+// modelName/mrFolder come from the audit hint's `model`, not the filename.
+```
+
+### Server-Side Wildcard Lookup (Type A `{IMEI}_index` folders)
+```typescript
+// From IMEISearchEngine.ts — findMatchingIMEIFolders()
+// Ask the NAS to return just the matching folder, without enumerating the date
+// folder (which can hold thousands of subfolders → plain readdir times out).
+// Runs in a child process so a slow NAS never pins Node's fs thread pool.
+await execFileAsync('cmd', ['/d', '/c', 'dir', '/b', '/a:d', ...patterns], { ... });
+// patterns: {datePath}\{IMEI}_*  (batched ≤60; IMEIs are validated 15-digit, so
+// the patterns are injection-safe). A read error does NOT trigger a broad rescan.
 ```
 
 ### MR PASS/FAIL Classification
 ```typescript
-// Named constant in IMEISearchEngine.ts
-const MR_FAIL_MODEL = 'error-error';    // case-insensitive match
-
-// PASS/FAIL is derived from the model name parsed out of the SG-*.png filename
-// (NOT from any folder — ModelRecogImages is never scanned):
+// PASS/FAIL is derived from a model name, never from scanning ModelRecogImages:
 //   model === 'Error-Error' → MR FAIL (red)
 //   any other model         → MR PASS (green)
+// Exact-path probe (Type B): every device is tagged mr-pass — its model comes
+//   from the audit hint and a wrong-color device's true model is a real model.
+// Type A fallback (buildMatchBatch): a SG-*.png captured by countFilesRecursive
+//   is tested with /error[-_]?error/i to set mr-fail vs mr-pass.
 ```
 
 ### Date Folder Detection

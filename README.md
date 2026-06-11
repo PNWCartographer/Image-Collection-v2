@@ -29,7 +29,7 @@ Operators import an audit list — ideally with IMEI, Machine, and Date columns 
 | **Parallel NAS search** | 48 concurrent folder reads, tuned for RS3617RPxs (12-drive RAID 5, 1 Gbps) |
 | **Parallel export** | 8 folders x 4 files = 32 concurrent copies, saturates the 1 Gbps pipe |
 | **7 organization modes** | Flat, By Machine, By Date, Machine-Date, Date-Machine, By IMEI, By Model |
-| **MR PASS / FAIL collection** | Collect each device's MR image (the `SG-*.png` inside its IMEI folder) by toggle |
+| **MR PASS / FAIL collection** | Collect each flagged device's MR image by exact IMEI-folder path; auto-enabled when the audit has a grade column |
 | **AI Images Only** | Export only the `FD/` subfolder (AI detection images) from matched IMEI folders |
 | **Multi-source manager** | Save and switch between multiple NAS roots; each source remembers its own folder toggles |
 | **Search history** | Last 5 searches stored with full parameter and result summaries |
@@ -140,7 +140,7 @@ Any trailing time component (e.g. `11:57`, `11:57:00`, or ISO `T` separator) is 
 
 IMEIs with missing or unrecognized values automatically fall back to the next-broadest scan — no results are ever lost, those IMEIs just search slower.
 
-**MR PASS / FAIL collection** also benefits from Smart Search. MR collection runs the standard IMEI-folder lookup, so when hints are available it goes straight to `Machine/Date/{IMEI}_{index}/` and pulls out the `SG-*.png` — same fast path as a normal search.
+**MR PASS / FAIL collection** relies on the Machine + Date hints: it opens each device's exact folder `Machine/{date}/{IMEI}/` and takes the image inside — no listing of the date folder, so it's instant no matter how large that folder is.
 
 If the detected columns are inaccurate, toggle **Smart Search OFF** to fall back to IMEI-only mode.
 
@@ -169,7 +169,7 @@ If your audit data only contains IMEIs (no Machine or Date columns), the tool fa
 | **Copy** (default) | Duplicates matched folders to the destination. Source data is unchanged. |
 | **Move** | Transfers folders and **deletes the source** after copy. A confirmation dialog warns before enabling. On next launch, action always resets to Copy for safety. |
 
-> Move mode does **not** apply to MR image collection — only the `SG-*.png` is copied (never moved), so each device's IMEI folder stays intact.
+> Move mode does **not** apply to MR image collection — only the one MR image (`.png`) is copied (never moved), so each device's folder stays intact.
 
 ### Image Type
 
@@ -224,22 +224,26 @@ For **MR image exports**, each IMEI gets its own folder containing the matched `
 
 ### MR PASS / MR FAIL — Model Recognition image collection
 
-These two toggles collect each device's **Model Recognition (MR) image** — the single `SG-*.png` the system captured — for every IMEI in your audit list. This is the right choice when your audit file is a list of devices flagged by the grading system (e.g. a "Wrong Color" report) and you just need each device's MR capture.
+These toggles collect each device's **Model Recognition (MR) image** for every IMEI in your audit list — the right choice when the audit is a list of devices flagged by the grading system (e.g. a "Wrong Color" report) and you just need each device's MR capture.
 
-**Turning on either MR PASS or MR FAIL enables MR collection.** It runs the same fast IMEI-folder lookup as a normal search, then pulls just the `SG-*.png` out of each device's folder:
+**You usually don't need to touch the toggles.** When the audit has a grade/fail column (e.g. `Grade-D2C` = "Wrong Color"), the tool detects it and **auto-enables MR collection** — a green banner confirms it. (Turning on either toggle manually does the same thing.)
+
+**How it works.** A flagged ("wrong color") device is stored in a folder named **exactly its IMEI** — `Machine/{date}/{IMEI}/`, with **no `_index` suffix** — containing one timestamp-named image `.png`. The tool opens that **exact path directly** and takes the `.png`:
 
 ```
-Machine/{date}/{IMEI}_{index}/SG-{machine}-{code}-{IMEI}-{brand}-{model}.png
+Machine/{date}/{IMEI}/2026-06-04-10-17-03.png
 ```
 
-The MR image lives right inside each device's IMEI folder, alongside the scan images — so collection is **fast** (small folders, looked up directly by IMEI). The tool does **not** enumerate the `ModelRecogImages/{Brand-Model}/` folders — those accumulate tens of thousands of files and are far too large to scan over the network.
+Opening a known folder by path never lists the giant parent date folder (thousands of subfolders — far too large to enumerate over the network), so collection is **instant regardless of folder size**. `ModelRecogImages/` is never scanned.
 
-- Results are **tagged PASS/FAIL** from the image's model name (`Error-Error` → FAIL/red, anything else → PASS/green).
-- The model is parsed from the filename (e.g. `Apple-iPhone8`) and shown in the results table.
-- **MR collection replaces standard image collection** while enabled — only the `SG-*.png` is exported, not the whole folder.
-- A device whose folder is found but contains no `SG-*.png` is reported as missing (and counted in the search log).
+- **Organize by model:** the device model comes from your audit's `Model` column (color stripped, `Apple-iPhone11-Purple` → `Apple-iPhone11`), so **By Model** and **Machine → Model** group the images correctly. Collection itself never needs the model column — without it, only those two modes fall back to an `Unknown` folder; every other mode is unaffected.
+- **Only the one `.png` per device is exported** — MR collection replaces standard full-folder collection while active.
+- A device whose folder is found but holds no `.png` is reported missing (and logged).
+- **Bulletproof:** the exact-path lookup runs on every Smart Search, so these images are collected even if MR was never enabled and the audit had no grade column.
 
-> The audit list itself is the filter — there is no "wrong color" toggle, because the search cannot detect grade. Load the list, enable MR, and every listed device's MR image is collected.
+> The audit list is the filter — there's no "wrong color" toggle. Load the list and search; the tool configures itself from the audit's columns.
+
+> Full-scan (regular, non-MR) devices are stored differently — in `{IMEI}_{index}` folders holding the scan JPGs plus an `SG-*.png` — and are handled by standard image collection, not these toggles.
 
 ### AI Images Only
 
@@ -335,16 +339,19 @@ The tool expects this hierarchy on the NAS:
 NAS_ROOT/                              (e.g. Z:\)
   M8/                                  Machine folder (Level 1)
     20260515/                           Date folder (Level 2, YYYYMMDD)
-      350002267153742_192/              IMEI_Index folder (Level 3)
-        image1.bmp                      Image files (Level 4)
+      350002267153742_192/              Full-scan folder — {IMEI}_{index}
+        image1.bmp                      Scan images (Level 4)
         image2.jpg
-        SG-M008-...-Apple-iPhone8.png   MR image (collected by MR PASS/FAIL mode)
+        SG-M008-...-Apple-iPhone8.png   Model-recognition image
         DefectLog.xml
         FD/                             AI detection images subfolder
           fd_image1.bmp
-      350024510270586_85/
+      352896116417358/                  MR / "wrong color" folder — bare {IMEI}, no index
+        2026-06-04-10-17-03.png         MR image (timestamp-named) — what MR collection takes
+        CMCSentFlag.txt
+        Upload.success
     20260514/
-    ModelRecogImages/                   AI model-recognition archive (NOT scanned — folders too large; MR mode reads SG-*.png from the IMEI folder instead)
+    ModelRecogImages/                   AI model-recognition archive (NOT scanned — folders too large; MR mode reads the .png from each device's {IMEI} folder instead)
       20260515/
         Apple-iPhone8/                  Brand-Model subfolder (MR PASS)
           SG-M008-075545-358627090247469-Apple-iPhone8.png

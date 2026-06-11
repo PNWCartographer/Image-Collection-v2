@@ -265,6 +265,7 @@ Single-column scrollable layout with glass card panels stacked vertically with 1
 │  │                                               │    │
 │  │  File: audit_may15.csv  [📁 Browse]           │    │
 │  │  Format: CSV · 1,247 IMEIs loaded · 3 invalid │    │ ← Import summary
+│  │  ⚑ MR collection list detected — MR enabled   │    │ ← Banner (if grade column)
 │  └───────────────────────────────────────────────┘    │
 │                                                       │
 │  ┌─ Settings ────────────────────────────────────┐    │
@@ -348,10 +349,10 @@ Every setting control has a tooltip icon (ⓘ) that displays on hover.
 |---------|-------------|
 | Action | **Move** transfers folders and removes them from the source. **Copy** duplicates folders, leaving the source unchanged. |
 | Image Type | **BMP**: collect .bmp images only. **JPEG**: collect .jpg/.jpeg only. **Both**: collect all image types from matched folders. |
-| Organize | Choose how exported folders are structured. **Flat**: single folder. **By Machine/Date**: one level of grouping. **Machine→Date**, **Date→Machine**, or **Machine→Model**: two-level nesting (Machine→Model groups by the device model parsed from the MR image filename). **By IMEI**: groups all scans of the same device. |
+| Organize | Choose how exported folders are structured. **Flat**: single folder. **By Machine/Date**: one level of grouping. **Machine→Date**, **Date→Machine**, or **Machine→Model**: two-level nesting (Machine→Model groups by device model — parsed from the MR image filename for standard scans, or taken from the audit's Model column for MR collection lists). **By IMEI**: groups all scans of the same device. |
 | Duplicates | **Skip**: if an IMEI folder already exists at the destination, leave it untouched. **Overwrite**: replace existing destination folders with the new source data. |
-| MR PASS | Collects each device's Model Recognition image (the `SG-*.png`) for every IMEI in your audit list. Runs the fast standard IMEI-folder search and pulls just the `SG-*.png` from inside each device's folder; results are tagged **PASS** (model recognized) or **FAIL** (model is `Error-Error`). Your audit list is the filter — grade (e.g. wrong color) comes from the audit file, not the NAS. Disables standard image collection. |
-| MR FAIL | Same MR collection as MR PASS — enabling either toggle collects every audit-list IMEI's `SG-*.png` from its IMEI folder, tagged PASS/FAIL by the model name in the filename. (There is no separate "wrong color" toggle; the audit list determines what is collected.) |
+| MR PASS | Collects the Model Recognition image for every IMEI in your audit list. Opens each device's folder `Machine/{date}/{IMEI}/` by exact path and takes the image inside — instant, no listing of the giant date folder and no `ModelRecogImages` scan. Your audit list is the filter — grade (e.g. wrong color) comes from the audit file, not the NAS. A grade column in the audit auto-enables this. |
+| MR FAIL | Same MR collection as MR PASS — enabling either toggle collects every audit-list IMEI's MR image by exact path. (There is no separate "wrong color" toggle; the audit list determines what is collected.) |
 | AI Images Only | When enabled, collects only the `FD/` subfolder contents (AI detection images) from matched IMEI folders. Standard scan images at the folder root are excluded. When disabled, standard export includes FD/ as part of the full IMEI folder. |
 | Scan Index | **All**: include every scan index (_1, _2, _3, etc.). **First only**: only _1 entries. |
 | Date Range | Restrict the search to date folders within the specified range. Leave blank to search all dates. |
@@ -367,7 +368,8 @@ Every setting control has a tooltip icon (ⓘ) that displays on hover.
 - **Idle**: Dashed border, subtle prompt text
 - **Drag over**: Border becomes solid accent color, background pulses gently, text changes to "Drop to import"
 - **Processing**: Spinner replaces text while parsing
-- **Loaded**: Shows file name, format badge, IMEI count
+- **Loaded**: Shows file name, format badge, IMEI count, and detected hint-column badges (Machine / Date)
+- **MR collection list detected**: when the parse result has `isMRAudit` (a grade column was found), the Audit panel shows a highlighted **banner** confirming the file is an MR collection list and that MR collection has been auto-enabled — the MR PASS/FAIL toggles no longer need to be set by the operator
 
 ### 4.2 Search Flow
 

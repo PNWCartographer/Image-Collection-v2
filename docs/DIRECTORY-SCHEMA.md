@@ -12,19 +12,26 @@ NAS_ROOT (e.g., Z:\ mapped to \\NAS_Lonestar)
 ├── M8/                              ← Machine folder (Level 1)
 │   │
 │   ├── 20260515/                    ← Date folder (Level 2) — YYYYMMDD format
-│   │   ├── 350019048184200_181/     ← IMEI_Index folder (Level 3)
-│   │   │   ├── FD/                 ← Subfolder (purpose TBD)
+│   │   │
+│   │   ├── 350019048184200_181/     ← TYPE A: full-scan folder {IMEI}_{index} (Level 3)
+│   │   │   ├── FD/                 ← AI detection images subfolder
 │   │   │   ├── 0_0_20260506114113669.jpg    ← Device scan images (Level 4)
 │   │   │   ├── 1_0_20260506114113732.jpg
 │   │   │   ├── 2_0_20260506114113828.jpg
 │   │   │   ├── ...                          ← ~20 numbered .jpg scan images
-│   │   │   ├── SG-M008-114100-350019048184200-Apple-iPhone13ProMax.png  ← MR image (copy)
+│   │   │   ├── SG-M008-114100-350019048184200-Apple-iPhone13ProMax.png  ← MR image
 │   │   │   ├── ai_check.json       ← Metadata: AI check results
 │   │   │   ├── CMCSentFlag.txt     ← Metadata: CMC sent flag
 │   │   │   ├── DefectLog.xml       ← Metadata: defect log (~145 KB)
 │   │   │   ├── Grade.json          ← Metadata: grading result
 │   │   │   └── Upload.success      ← Metadata: upload confirmation
 │   │   ├── 350024510270586_85/
+│   │   │
+│   │   ├── 358627090247469/         ← TYPE B: MR / CMC-upload folder {IMEI} (no _index)
+│   │   │   ├── 20260515082041.png   ←   a single timestamp-named .png (NOT SG-*)
+│   │   │   ├── CMCSentFlag.txt       ←   CMC sent flag
+│   │   │   ├── Upload.success        ←   upload confirmation
+│   │   │   └── UUID.key              ←   transaction key
 │   │   └── 350118652588373_32/
 │   ├── 20260514/
 │   ├── ...
@@ -102,20 +109,30 @@ NAS_ROOT (e.g., Z:\ mapped to \\NAS_Lonestar)
   - `GRR Scans` — Gauge repeatability scan data
   - `Bin` — Machine bin folder
 - **Detection rule**: Date folders match the regex `^\d{8}$` — exactly 8 digits. Anything else is a special folder.
-- **Tool behavior**: Only date folders are traversed — in both standard and MR mode. `ModelRecogImages/` is **never** scanned (it is too large to enumerate over SMB). MR mode reuses the standard date→IMEI_Index traversal and pulls the per-device `SG-*.png` out of each IMEI folder (see §ModelRecogImages and §Level 4).
+- **Tool behavior**: The tool never enumerates a date folder when it can avoid it (a production date folder can hold thousands of device subfolders, and a plain SMB listing times out). Instead it goes straight to each device folder by exact path (Type B) or resolves the folder via a server-side wildcard (Type A) — see §Level 3. `ModelRecogImages/` is **never** scanned (too large to enumerate over SMB); it is reference-only.
 
-### Level 3 — IMEI_Index Folders
-- **What**: Subdirectories within each date folder, one per scanned device
-- **Naming convention**: `{15-digit IMEI}_{scan index}`
-  - Example: `350002267153742_192`
-  - IMEI portion: `350002267153742` (first 15 characters, always numeric)
-  - Separator: underscore `_`
-  - Scan index: `192` (sequential number for that machine on that date)
-- **Scan index meaning**: The index represents the device's position in the scanning sequence for that machine and date. Device `_1` was the first scanned that day, `_2` was the second, and so on.
-- **Tool behavior**: The tool extracts the IMEI by splitting the folder name on `_` and taking the first 15 characters. This is matched against the audit list.
+### Level 3 — Device Folders (two layouts)
 
-### Level 4 — IMEI Folder Contents
-- **What**: Files and subfolders inside each IMEI_Index folder
+Each date folder holds one subfolder per scanned device, in **one of two layouts**. The tool collects from both.
+
+**Type A — full-scan folder `{IMEI}_{index}`**
+- Naming convention: `{15-digit IMEI}_{scan index}` — e.g. `350002267153742_192`
+  - IMEI portion: first 15 characters, always numeric
+  - Scan index: the integer after the underscore — the device's position in that machine/date's scan sequence (`_1` was first, `_2` second, …)
+- Contents: the full set of JPEG scan images plus `DefectLog.xml`, `Grade.json`, `FD/`, and a `SG-*.png` MR image (see Level 4).
+- **Tool behavior**: resolved by a **server-side wildcard** — `findMatchingIMEIFolders` runs `cmd /c dir /b /a:d {datePath}\{IMEI}_*` so the NAS returns the matching folder without enumerating the date folder. IMEI is then taken from the folder name (split on `_`) and matched against the audit list.
+
+**Type B — MR / CMC-upload folder `{IMEI}` (wrong-color devices)**
+- Naming convention: the folder name is **exactly the 15-digit IMEI**, with **no `_index` suffix** — e.g. `358627090247469`.
+- Contents: a single **timestamp-named `.png`** (e.g. `20260515082041.png`, **not** `SG-*`), plus `CMCSentFlag.txt`, `Upload.success`, and `UUID.key`. No JPEG scan set, no `Grade.json`, no `FD/`.
+- These are how devices uploaded to CMC by Model Recognition (e.g. "Wrong Color" grades) are stored.
+- **Tool behavior**: opened by **exact path** — `collectMRDirect` opens `{root}/{machine}/{date}/{IMEI}/` directly (the path is fully known from the audit's IMEI + Machine + Date) and takes the `.png` inside, whatever its name. No listing, no wildcard.
+
+### Level 4 — Device Folder Contents
+
+#### Type A folder contents
+
+- **What**: Files and subfolders inside each `{IMEI}_{index}` folder
 
 **Device Scan Images (JPEG):**
 - Naming pattern: `{position}_{sub}_{timestamp}.jpg`
@@ -126,11 +143,11 @@ NAS_ROOT (e.g., Z:\ mapped to \\NAS_Lonestar)
 - Typically ~20 images per device, ranging from 27 KB to 3,121 KB each
 
 **Model Recognition (MR) Image (per-device copy):**
-- **Location**: Directly in the IMEI folder root
+- **Location**: Directly in the `{IMEI}_{index}` folder root
 - **File type**: `.png`
 - **Naming pattern**: `SG-{machine}-{code}-{IMEI}-{brand}-{model}.png`
   - Example: `SG-M008-114100-350019048184200-Apple-iPhone13ProMax.png`
-- **This is the file MR mode collects.** When MR PASS or MR FAIL is enabled, the tool finds this `SG-*.png` inside each matched IMEI folder during the normal IMEI-folder search and exports only it (see §ModelRecogImages below). PASS/FAIL is derived from the model segment of the filename — `Error-Error` → FAIL, anything else → PASS. The tool does **not** read the separate `ModelRecogImages/` tree.
+- When a Type A device is collected on the standard path, `countFilesRecursive` captures this `SG-*.png` and parses the `{brand}-{model}` segment so the match carries a model name and a PASS/FAIL tag (`Error-Error` → FAIL, anything else → PASS). The tool does **not** read the separate `ModelRecogImages/` tree. (Note: the primary MR collection path is the Type B exact-path probe below, which does not depend on this file.)
 
 **Subfolders:**
 - `FD/` — AI detection images. Contains images used/generated by the AI defect detection system. Included automatically in standard IMEI folder exports. When "AI Images Only" toggle is ON, the tool collects only `FD/` contents and skips root-level scan images.
@@ -146,13 +163,29 @@ NAS_ROOT (e.g., Z:\ mapped to \\NAS_Lonestar)
 
 - **Tool behavior**: During standard image export, the Image Type filter determines which file extensions are collected. Metadata files (`.json`, `.xml`, `.txt`, `.success`) are excluded from image exports unless explicitly included in a future feature.
 
+#### Type B folder contents
+
+- **What**: Files inside each bare `{IMEI}` folder (no `_index`)
+
+**MR upload image (the collected file):**
+- **Location**: directly in the `{IMEI}` folder root
+- **File type**: `.png`, **timestamp-named** (e.g. `20260515082041.png`) — **not** the `SG-*` pattern
+- **This is the file MR collection takes.** `collectMRDirect` takes the first `.png` in the folder regardless of its name. The device model is **not** in this filename — it comes from the audit's Model column instead.
+
+**Metadata files (not collected):**
+| File | Type | Description |
+|------|------|-------------|
+| `CMCSentFlag.txt` | Text | CMC transmission flag |
+| `Upload.success` | Flag | Indicates successful upload to upstream systems |
+| `UUID.key` | Key | Per-transaction identifier |
+
 ---
 
 ## ModelRecogImages Directory Structure
 
 The `ModelRecogImages/` folder exists under each machine folder and contains an AI-categorized collection of Model Recognition images, organized by recognized model. This section documents that on-disk layout for reference.
 
-> **Important (v1.5.1): the tool does NOT scan `ModelRecogImages/`.** The `{Brand-Model}/` folders here accumulate **tens of thousands** of files per model and time out over SMB (the 15s `readdir` timeout fires, producing empty results and a hung UI). An earlier v1.5.0 draft scanned this tree; that approach was abandoned. Instead, MR collection reuses the fast standard IMEI-folder search and extracts the per-device `SG-*.png` that already lives **inside each IMEI folder** (see §Level 4). PASS/FAIL is read from the model segment of that filename — `Error-Error` → FAIL, anything else → PASS. A device's grade (e.g. "Wrong Color") is knowable only from the audit file, so the audit list is the filter; there is no "wrong color" toggle.
+> **Important: the tool does NOT scan `ModelRecogImages/`.** The `{Brand-Model}/` folders here accumulate **tens of thousands** of files per model and time out over SMB (the 15s `readdir` timeout fires, producing empty results and a hung UI). An earlier v1.5.0 draft scanned this tree; that approach was abandoned and this section is retained for **reference only**. MR collection instead opens each wrong-color device's **Type B `{IMEI}` folder by exact path** (see §Level 3) and takes the timestamp-named `.png` inside — no enumeration of this tree or of the date folder. The device model comes from the audit's Model column; a device's grade (e.g. "Wrong Color") is knowable only from the audit file, so the audit list is the filter and there is no "wrong color" toggle.
 
 ### Path Structure
 
@@ -174,7 +207,7 @@ The `ModelRecogImages/` folder exists under each machine folder and contains an 
 
 ### Midnight rollover (auto End-Date +1)
 
-A device tested near midnight can have its IMEI_Index folder filed under the **next day** relative to its audit/test date. To avoid false "missing" results, when a date column is detected the auto-populated End Date is set to max(test date) + 1 day, so the standard search still reaches a rolled-over folder. Missing/non-existent date folders (ENOENT) are benign and **not** counted as scan errors. (This applies to all searches; MR mode inherits it because it reuses the standard IMEI-folder search.)
+A device tested near midnight can have its folder filed under the **next day** relative to its audit/test date. To avoid false "missing" results, when a date column is detected the auto-populated End Date is set to max(test date) + 1 day, so the search still reaches a rolled-over folder. Missing/non-existent date folders (ENOENT) are benign and **not** counted as scan errors. This applies to all searches, exact-path MR collection included (the End-Date hint widens which dates each `{IMEI}` target is built for).
 
 ### MR PASS (Brand-Model Folders)
 
@@ -213,18 +246,21 @@ SG-M008-075545-358627090247469-Apple-iPhone8.png
               └── code      └── IMEI  └── brand └── model
 ```
 
-In MR mode the tool already knows the IMEI from the matched IMEI_Index folder name; it parses the **model** (segment 4 onward, e.g. `Apple-iPhone8`) from the `SG-*.png` filename to set the result's model name and PASS/FAIL tag (`Error-Error` → FAIL, anything else → PASS).
+When a **Type A** device is collected on the standard fallback path, the tool already knows the IMEI from the folder name; `extractModelFromMRFilename` parses the **model** (segment 4 onward, e.g. `Apple-iPhone8`) from the `SG-*.png` filename to set the match's model name and PASS/FAIL tag (`Error-Error` → FAIL, anything else → PASS). Type B exact-path matches do not use this — their model comes from the audit's Model column.
 
-### Search Behavior by Toggle
+### Collection Behavior (v1.5.7)
 
-As of v1.5.1, enabling **either** MR toggle activates MR mode. MR mode runs the **same standard IMEI-folder search** and, for each matched device, extracts only the `SG-*.png` from that IMEI folder. It does **not** scan `ModelRecogImages/`. The toggles do not narrow the search — the audit list does — and results are tagged PASS/FAIL from the parsed model name. A matched folder with no `SG-*.png` is reported missing.
+MR collection no longer scans `ModelRecogImages/` and no longer depends on the `SG-*.png` model segment. The path is decided by the dispatcher `searchIMEIs`:
 
-| MR PASS | MR FAIL | Search Path | Files Collected |
-|---------|---------|-------------|-----------------|
-| OFF | OFF | Standard: `{machine}/{date}/{IMEI_index}/` | Device scan images (.jpg/.bmp) from the folder |
-| ON | OFF | Standard: `{machine}/{date}/{IMEI_index}/` | The single `SG-*.png` from each matched folder, tagged PASS/FAIL by parsed model |
-| OFF | ON | Standard: `{machine}/{date}/{IMEI_index}/` (same as above) | The single `SG-*.png` from each matched folder, tagged PASS/FAIL by parsed model |
-| ON | ON | Standard: `{machine}/{date}/{IMEI_index}/` (same as above) | The single `SG-*.png` from each matched folder, tagged PASS/FAIL by parsed model |
+- **Universal exact-path probe** — on **every** Smart Search (even with both MR toggles OFF), `collectMRDirect` is run first over all hinted targets, opening each `{machine}/{date}/{IMEI}/` Type B folder by exact path. Wrong-color / MR-upload devices are therefore collected **regardless of the MR toggles or whether the audit had a grade column**. Type A devices `ENOENT` here (fast) and fall through to standard enumeration only for the IMEIs the probe didn't find.
+- **Auto-enable** — when the audit has a grade column (`isMRAudit`), the renderer force-enables MR collection with a banner; the operator need not set a toggle.
+- **PASS/FAIL** — exact-path matches are tagged `mr-pass` with the model from the audit hint. (A Type A device collected on the fallback path is tagged `mr-fail` only if its captured `SG-*.png` model matches `Error-Error`.)
+
+| Scenario | Path taken | Files collected |
+|----------|-----------|-----------------|
+| Both MR toggles OFF, Type B device in list | Exact-path probe opens `{machine}/{date}/{IMEI}/` | The timestamp-named `.png` (collected even with MR off) |
+| Both MR toggles OFF, Type A device in list | Probe ENOENTs → server-side wildcard `{IMEI}_*` | Full folder per Image Type setting |
+| Either MR toggle ON (or grade column → auto-enabled) | `searchMRDirect`: exact-path `{machine}/{date}/{IMEI}/` only | The `.png` from each Type B folder, tagged PASS/FAIL |
 
 ---
 
@@ -234,9 +270,11 @@ As of v1.5.1, enabling **either** MR toggle activates MR mode. MR mode runs the 
 |---------|---------|---------|-------|
 | Machine folder | `M` + number | M8, M20, M34 | `^M\d+$` |
 | Date folder | YYYYMMDD | 20260515 | `^\d{8}$` |
-| IMEI_Index folder | 15 digits + `_` + index | 350019048184200_181 | `^\d{15}_\d+$` |
+| Type A folder | 15 digits + `_` + index | 350019048184200_181 | `^\d{15}_\d+$` |
+| Type B folder | 15 digits, no suffix | 358627090247469 | `^\d{15}$` |
 | Scan image (JPEG) | `pos_sub_timestamp.jpg` | 0_0_20260506114113669.jpg | `^\d+_\d+_\d+\.jpg$` |
-| MR image (PNG) | `SG-machine-code-IMEI-brand-model.png` | SG-M008-075545-358627090247469-Apple-iPhone8.png | `^SG-M\d+-\d+-\d{15}-.+\.png$` |
+| MR image, Type A (PNG) | `SG-machine-code-IMEI-brand-model.png` | SG-M008-075545-358627090247469-Apple-iPhone8.png | `^SG-M\d+-\d+-\d{15}-.+\.png$` |
+| MR image, Type B (PNG) | timestamp `.png` (any name) | 20260515082041.png | `\.png$` |
 | Brand-Model folder | `Brand-Model` | Apple-iPhone8, Samsung-GalaxyS21 | `^[A-Za-z]+-[A-Za-z0-9]+$` |
 | Error-Error folder | Exact name | Error-Error | `^Error-Error$` |
 | BMP image | any name + .bmp | (varies) | `\.bmp$` |
@@ -258,6 +296,6 @@ These folders are skipped during IMEI search by default:
 | `GRR Images` | 1 (root) | Gauge repeatability reference images |
 | `version_control` | 1 (root) | Software version control — not image data |
 
-The skip list is applied automatically. Level 1 utility folders appear in the toggle list but are unchecked by default. Level 2 special folders are filtered out by the date-folder regex and never traversed — in both standard and MR mode.
+The skip list is applied automatically. Level 1 utility folders appear in the toggle list but are unchecked by default. `version_control` and `ModelRecogImages` are in the engine's hard `SKIP_FOLDERS` set; the other Level 2 special folders (`Bin`, `GRR Scans`) are filtered out by the date-folder regex and never traversed.
 
-> `ModelRecogImages` is **never** scanned, in any mode. MR mode reuses the standard date→IMEI_Index traversal and pulls the per-device `SG-*.png` out of each matched IMEI folder. Scanning the `ModelRecogImages/{Brand-Model}/` folders directly was tried in a v1.5.0 draft and abandoned — they hold tens of thousands of files and time out over SMB.
+> `ModelRecogImages` is **never** scanned. MR collection opens each wrong-color device's Type B `{IMEI}` folder by exact path and takes the timestamp-named `.png` inside (no enumeration of this tree or the date folder). Scanning the `ModelRecogImages/{Brand-Model}/` folders directly was tried in a v1.5.0 draft and abandoned — they hold tens of thousands of files and time out over SMB.
