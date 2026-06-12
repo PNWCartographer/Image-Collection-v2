@@ -1,6 +1,6 @@
 {
   "name": "image-collection-v2",
-  "version": "1.5.9",
+  "version": "1.5.10",
   "description": "Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number",
   "author": "Image Collection Team",
   "main": "./out/main/index.js",

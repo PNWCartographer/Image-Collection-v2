@@ -390,11 +390,13 @@ function buildHints(
   const hints: Record<string, AuditHint> = {}
   let machineValidCount = 0
   let dateValidCount = 0
+  let hintedRowCount = 0
   const dataRows = rows.slice(hasHeader ? 1 : 0)
 
   for (const row of dataRows) {
     const imei = normalizeIMEI(row[imeiCol] || '')
     if (!IMEI_REGEX.test(imei)) continue
+    hintedRowCount++
 
     const hint: AuditHint = {}
 
@@ -438,7 +440,7 @@ function buildHints(
       dateColumn: detection.dateHeader,
       machineValidCount,
       dateValidCount,
-      totalHintedRows: dataRows.length,
+      totalHintedRows: hintedRowCount,
       dateFormatGuess: detection.dateFormatGuess
     }
   }

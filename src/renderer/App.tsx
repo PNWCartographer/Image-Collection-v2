@@ -509,12 +509,12 @@ function App(): JSX.Element {
                 '✓ 检测到 MR 收集列表 — 将自动收集列表中每台设备的 MR 图像。您不需要设置 MR PASS / MR FAIL。')}
             </div>
           )}
-          {searchResult?.notice === 'mr-no-hints' && (
+          {searchResult?.notice === 'mr-no-targets' && (
             <div className={styles.mrBanner}>
               {t(lang,
-                '⚠ MR collection needs an audit with Machine and Date columns to locate each device’s image. This list has neither, so no MR images could be collected.',
-                '⚠ MR 收集需要含有「機器」與「日期」欄位的稽核清單才能定位每部裝置的影像。此清單兩者皆無，因此無法收集任何 MR 影像。',
-                '⚠ MR 收集需要含有"机器"与"日期"列的审计列表才能定位每台设备的图像。此列表两者皆无，因此无法收集任何 MR 图像。')}
+                '⚠ MR collection couldn’t locate any devices. Select the machine folder(s) the devices are on and set a Start/End date range — or use an audit that includes a Date column.',
+                '⚠ MR 收集無法定位任何裝置。請選取裝置所在的機器資料夾並設定開始／結束日期範圍 — 或使用含有「日期」欄位的稽核清單。',
+                '⚠ MR 收集无法定位任何设备。请选择设备所在的机器文件夹并设置开始／结束日期范围 — 或使用含有"日期"列的审计列表。')}
             </div>
           )}
           <ResultsPanel lang={lang} result={displayResult} searching={searching} />

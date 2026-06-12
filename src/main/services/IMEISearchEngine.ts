@@ -3,7 +3,7 @@ import { join, basename } from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import type { SearchRequest, SearchMatch, SearchProgress, SearchResult, AuditHint } from '../../shared/types'
-import { PROGRESS_THROTTLE_MS, IMEI_REGEX, DATE_FOLDER_REGEX } from '../../shared/utils'
+import { PROGRESS_THROTTLE_MS, IMEI_REGEX, DATE_FOLDER_REGEX, addDaysToYMD } from '../../shared/utils'
 import { pooled, type CancelToken } from '../../shared/pool'
 import { createSearchLogger, RotatingLogger } from './Logger'
 
@@ -514,6 +514,86 @@ function buildHintedTargets(request: SearchRequest): {
   return { targets, droppedNoHint, droppedMachine, droppedDate }
 }
 
+/** Max days a date range is expanded into — bounds a runaway brute-force probe. */
+const MAX_RANGE_DAYS = 400
+
+/** Every YYYYMMDD date from dateStart..dateEnd inclusive (request dates are YYYY-MM-DD). */
+function datesInRange(dateStart?: string, dateEnd?: string): string[] {
+  if (!dateStart || !dateEnd) return []
+  const start = dateStart.replace(/-/g, '')
+  const end = dateEnd.replace(/-/g, '')
+  if (!/^\d{8}$/.test(start) || !/^\d{8}$/.test(end) || end < start) return []
+  const out: string[] = []
+  let cur = start
+  while (cur <= end && out.length < MAX_RANGE_DAYS) {
+    out.push(cur)
+    cur = addDaysToYMD(cur, 1)
+  }
+  return out
+}
+
+/**
+ * Build exact-path MR probe targets, expanding missing hints into the search
+ * space the operator selected so devices collect "regardless of parameters".
+ * For each IMEI:
+ *   - machine: its hinted machine if that folder is selected; otherwise every
+ *     selected machine folder (brute force).
+ *   - date: its hinted date if present (and in range); otherwise every day in
+ *     the selected date range.
+ * Every target is a direct path open (no folder enumeration), so even a bare
+ * IMEI list collects as long as the operator selected the machine folder(s) and
+ * a date range. A device with full hints is still a single exact lookup.
+ */
+function buildMRProbeTargets(request: SearchRequest): {
+  targets: HintedTarget[]
+  droppedMachine: number
+  droppedNoDate: number
+  expanded: boolean
+} {
+  const hints = request.hints || {}
+  const selected = request.selectedFolders
+  const selectedSet = new Set(selected)
+  const rangeDates = datesInRange(request.dateStart, request.dateEnd)
+  const targets: HintedTarget[] = []
+  let droppedMachine = 0
+  let droppedNoDate = 0
+  let expanded = false
+
+  for (const imei of request.imeis) {
+    const hint = hints[imei]
+
+    // Machines to try: the hinted machine (if selected), else every selected folder.
+    let machines: string[]
+    if (hint?.machine) {
+      if (!selectedSet.has(hint.machine)) { droppedMachine++; continue }
+      machines = [hint.machine]
+    } else {
+      if (selected.length === 0) { droppedMachine++; continue }
+      machines = selected
+    }
+
+    // Dates to try: the hinted date (if in range), else every day in the range.
+    let dates: string[]
+    if (hint?.date) {
+      if (!isDateInRange(hint.date, request)) { droppedNoDate++; continue }
+      dates = [hint.date]
+    } else {
+      if (rangeDates.length === 0) { droppedNoDate++; continue }
+      dates = rangeDates
+    }
+
+    if (machines.length > 1 || dates.length > 1) expanded = true
+    const model = hint?.model
+    for (const machine of machines) {
+      for (const date of dates) {
+        targets.push({ imei, machine, date, model })
+      }
+    }
+  }
+
+  return { targets, droppedMachine, droppedNoDate, expanded }
+}
+
 /**
  * Open each target's EXACT folder Machine/{date}/{IMEI}/ and take the .png inside.
  * The folder name is the bare IMEI (no scan-index suffix) — how wrong-color / MR
@@ -542,24 +622,28 @@ async function collectMRDirect(
       const files = await readdirWithTimeout(folderPath, { withFileTypes: true })
       const png = files.find((f) => f.isFile() && f.name.toLowerCase().endsWith('.png'))
       if (png) {
-        const match: SearchMatch = {
-          imei: t.imei,
-          machineName: t.machine,
-          date: t.date,
-          scanIndex: 0,
-          folderName: png.name,
-          sourcePath: join(folderPath, png.name),
-          bmpCount: 0,
-          jpegCount: 0,
-          otherCount: 1,
-          totalFiles: 1,
-          matchType: 'mr-pass',
-          mrFolder: t.model,
-          modelName: t.model
+        // Guard the multi-date probe: if a concurrent probe on another date
+        // already found this device, don't emit a duplicate match.
+        if (!foundIMEIs.has(t.imei)) {
+          foundIMEIs.add(t.imei)
+          const match: SearchMatch = {
+            imei: t.imei,
+            machineName: t.machine,
+            date: t.date,
+            scanIndex: 0,
+            folderName: png.name,
+            sourcePath: join(folderPath, png.name),
+            bmpCount: 0,
+            jpegCount: 0,
+            otherCount: 1,
+            totalFiles: 1,
+            matchType: 'mr-pass',
+            mrFolder: t.model,
+            modelName: t.model
+          }
+          matches.push(match)
+          onMatches([match])
         }
-        matches.push(match)
-        foundIMEIs.add(t.imei)
-        onMatches([match])
       } else {
         // Folder exists but holds no .png image
         ctx.noMRImage++
@@ -588,15 +672,28 @@ async function collectMRDirect(
   })
 }
 
-/** MR collection: open each device's exact IMEI folder and take its image. */
+/**
+ * MR collection: open each device's exact folder and take its image. Devices
+ * with full hints are a single lookup; devices missing a date (or machine) are
+ * probed across the selected machine folder(s) and date range — all direct path
+ * opens, never an enumeration — so they collect regardless of audit columns.
+ */
 async function searchMRDirect(
   request: SearchRequest,
   ctx: SearchContext,
   onProgress: (progress: SearchProgress) => void,
   onMatches: (matches: SearchMatch[]) => void
 ): Promise<SearchResult> {
-  const { targets, droppedNoHint, droppedMachine, droppedDate } = buildHintedTargets(request)
-  ctx.logger.info(`MR direct: opening ${targets.length} device folders (dropped: noHint=${droppedNoHint}, machineNotSelected=${droppedMachine}, dateOutOfRange=${droppedDate})`)
+  const { targets, droppedMachine, droppedNoDate, expanded } = buildMRProbeTargets(request)
+  ctx.logger.info(`MR probe: ${targets.length} exact-path lookups for ${request.imeis.length} IMEIs (dropped: machineNotSelected=${droppedMachine}, noDate=${droppedNoDate})`)
+  if (expanded) {
+    ctx.logger.info('Some devices had no per-device date — probing the selected machine folder(s) across the date range by exact path (no folder enumeration).')
+  }
+  if (targets.length === 0) {
+    ctx.logger.warn('MR collection has nothing to probe — select the device machine folder(s) and set a Start/End date (or use an audit with a Date column).')
+    const result = await buildResult(ctx, request.imeis, 0, onProgress)
+    return { ...result, notice: 'mr-no-targets' }
+  }
   await collectMRDirect(request, targets, ctx, onProgress, onMatches)
   return buildResult(ctx, request.imeis, targets.length, onProgress)
 }
@@ -616,27 +713,15 @@ export async function searchIMEIs(
   const ctx = await createSearchContext(request.imeis, logsDir)
   const { token, foundIMEIs } = ctx
 
-  const hasHints = !!(request.hints && Object.keys(request.hints).length > 0)
-
   logSearchHeader(ctx.logger, request, mrMode ? 'MR' : 'standard')
 
-  // MR mode with hints: open each device's folder by its exact path — instant,
-  // no enumeration of the (huge) date folder, no wildcard, no concurrency storm.
-  // Gated on hints (not the Smart Search toggle) so MR collection works whenever
-  // the audit carries Machine + Date, regardless of how the toggles are set.
-  if (mrMode && hasHints) {
-    ctx.logger.info('MR collection: opening each device folder Machine/{date}/{IMEI}/ by exact path and taking its image')
-    return searchMRDirect(request, ctx, onProgress, onMatches)
-  }
-
-  // MR mode without hints: exact-path collection is impossible (no Machine/Date to
-  // locate the device folder), and a broad enumeration would time out on a large
-  // NAS without finding the bare {IMEI} MR folders anyway. Tell the operator what
-  // is needed instead of silently scanning the wrong thing.
+  // MR collection always uses exact-path probing. Devices with full hints are a
+  // single lookup; devices missing a date (or machine) are probed across the
+  // selected machine folder(s) and date range — all direct path opens, never a
+  // folder enumeration. searchMRDirect surfaces a notice if there's nothing to
+  // probe (e.g. no date column and no date range set).
   if (mrMode) {
-    ctx.logger.warn('MR collection requested but the audit has no Machine/Date hints — cannot locate MR images')
-    const result = await buildResult(ctx, request.imeis, 0, onProgress)
-    return { ...result, notice: 'mr-no-hints' }
+    return searchMRDirect(request, ctx, onProgress, onMatches)
   }
 
   // Smart Search: targeted lookups when audit file had machine + date columns

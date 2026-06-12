@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
-Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.9 — audit cleanup & MR unification.**
+Desktop tool for bulk-collecting device images from NAS shared folders by IMEI number. Built with Electron, React, and a Liquid Glass UI theme. **v1.5.10 — MR collection without dates.**
 
 Operators import an audit list — ideally with IMEI, Machine, and Date columns for fastest results — select which machine folders to search, and export matched image folders to a local destination with configurable organization.
 
@@ -373,6 +373,14 @@ NAS_ROOT/                              (e.g. Z:\)
 ---
 
 ## Version History
+
+### v1.5.10 — MR Collection Without Dates (2026-06-12)
+
+Makes MR image collection work even when the audit list lacks a Date column (or any hint columns at all), so operators get their images regardless of how complete the file is — without ever falling back to the slow folder enumeration that times out on the NAS.
+
+- **Date-range exact-path probing.** When a device has no per-device date, MR collection now probes every day in the selected date range by exact path — `Machine/{date}/{IMEI}/` for each day — and takes the image on whichever day the device was actually tested. A device with no machine hint is probed across every selected machine folder. Because every lookup is a direct path open (never a directory listing), it stays fast and NAS-safe even across a wide range: a 130-device list over a 16-day window is ~2,000 instant lookups. A device with full Machine + Date hints is still a single lookup (unchanged — the dated production list collects exactly as before).
+- **Works with a bare IMEI list.** As long as you select the machine folder(s) and set a Start/End date range, MR collection finds the devices even if the audit has only IMEIs. If there's nothing to go on (no date range and no Date column), a clear notice now says exactly what to provide.
+- **Fixed a misleading audit warning.** Empty trailing rows in a spreadsheet no longer count toward the hinted-row total, so a clean 130-device file reads `130/130` instead of falsely warning that hundreds of "IMEIs have unrecognized machine values."
 
 ### v1.5.9 — Audit Cleanup & MR Unification (2026-06-11)
 

@@ -396,6 +396,23 @@ Driven by a 6-dimension read-only audit (dead/zombie code, search engine, parser
 
 ---
 
+## Milestone 19: Date-less MR Collection (v1.5.10)
+> **Gate**: An MR audit that lacks a Date column (or any hint columns) still collects every device — by exact-path probing the selected machine folder(s) across the selected date range — with **no folder enumeration**, while a fully-hinted audit is still one exact lookup per device.
+
+Driven by a field report: a real MR list (`CollectMRImage-06112026.xlsx`) had Model + IMEI + Machine but **no** StartTime/Date column, so every device dropped as `noHint` and 0 images collected.
+
+| # | Task | Details |
+|---|------|---------|
+| 19.1 | Date-range exact-path expansion | `buildMRProbeTargets` replaces the date-required `buildHintedTargets` for MR. Per IMEI: machine = the hinted machine (if its folder is selected) else every selected folder; date = the hinted date (if in range) else every day in the selected range (`datesInRange`, capped at 400 days). The cartesian product is probed by exact path — `Machine/{date}/{IMEI}/` — so a device with no date is found on whichever day it was tested, and a bare IMEI list collects given selected machines + a range. No directory listing, so it stays NAS-safe at any range width. |
+| 19.2 | Single-lookup fast path preserved | A device with machine + in-range date yields exactly one target (`expanded=false`) — the dated production list (397/397) builds 397 targets, identical to before. |
+| 19.3 | Concurrent-probe dedup | `collectMRDirect` re-checks `foundIMEIs` before emitting a match, so the multi-date probe can't emit a device twice. |
+| 19.4 | Honest no-targets notice | MR routing is unconditional (`mrMode → searchMRDirect`); if nothing can be probed (no machines selected and no date source), a `mr-no-targets` notice tells the operator to select machine folder(s) and set a date range. |
+| 19.5 | Blank-row warning fix | `buildHints` counts only valid-IMEI rows toward `totalHintedRows`, so empty trailing spreadsheet rows no longer inflate the "N IMEIs have unrecognized machine values" warning (a clean 130-device file reads 130/130). |
+
+**Checkpoint**: The no-date file (130 IMEIs, M17/M21, no Date column) builds 2,080 exact-path probes (130 × 1 machine × 16 days, `expanded=true`) and collects; the dated file builds 397 single-lookup targets (`expanded=false`, unchanged). typecheck + lint pass.
+
+---
+
 ## Milestone Dependency Map
 
 ```
